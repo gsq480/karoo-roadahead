@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ExtensionInfo
+    displayName="@string/extension_name"
+    icon="@drawable/ic_roadahead"
+    id="roadahead"
+    scansDevices="false"
+    mapLayer="false"
+    fitFile="false">
+    <DataType
+        description="@string/road_description"
+        displayName="@string/road_name"
+        graphical="true"
+        icon="@drawable/ic_roadahead"
+        typeId="road" />
+</ExtensionInfo>

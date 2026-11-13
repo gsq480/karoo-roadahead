@@ -85,6 +85,13 @@ class Tracker(
         return Look.Road(slice(prof, wantM))
     }
 
+    /** Drop the prediction in hand, so the next fix works out a new one. For when new map or elevation files arrive. */
+    fun forget() {
+        path = null
+        profile = null
+        predictedAt = null
+    }
+
     private fun forget(look: Look): Look {
         path = null
         profile = null

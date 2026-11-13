@@ -108,6 +108,61 @@ class ProfileTest {
         assertNull(ProfileBuilder(HeightSource { null }).build(pathAlong(road(0.0, 1000.0))))
     }
 
+    // The picture.
+
+    private fun ahead(lengthM: Double, end: End, wantM: Double = 2000.0): Ahead {
+        val dists = sampleDists(lengthM, 25.0)
+        return Ahead(25.0, DoubleArray(dists.size) { 600.0 + dists[it] * 0.05 }, lengthM, wantM, end, "Main")
+    }
+
+    private fun texts(p: Picture) = p.shapes.filterIsInstance<Label>().map { l -> l.runs.joinToString("") { it.text } }
+
+    @Test fun drawsTwentyBlocksInTheGradeColourWithTheNumbersOnTop() {
+        val p = FieldPainter.paint(Look.Road(ahead(2000.0, End.FAR_ENOUGH)), 480, 150, FieldSettings())
+        val fills = p.shapes.filterIsInstance<Fill>()
+        assertEquals(20, fills.size)
+        // 5% all the way is the Karoo's yellow.
+        assertTrue(fills.all { it.argb == 0xFFF0D800.toInt() })
+        assertEquals(listOf("ROAD AHEAD", "Main", "2.0 km", "+100 m", "5 % max"), texts(p))
+        // Nothing is drawn outside the field.
+        for (f in fills) assertTrue(f.ys.all { it >= 0f && it <= 150f } && f.xs.all { it >= 0f && it <= 481f })
+    }
+
+    @Test fun marksAJunctionAndSaysHowFar() {
+        val p = FieldPainter.paint(Look.Road(ahead(1100.0, End.TURN)), 480, 150, FieldSettings())
+        assertTrue(texts(p).contains("junction in 1.1 km"))
+        assertTrue(p.shapes.filterIsInstance<Stroke>().any { it.dashed })
+        assertEquals(11, p.shapes.filterIsInstance<Fill>().size)
+    }
+
+    @Test fun dropsWhatDoesNotFitANarrowOrShortField() {
+        val narrow = texts(FieldPainter.paint(Look.Road(ahead(2000.0, End.FAR_ENOUGH)), 240, 150, FieldSettings()))
+        assertEquals(listOf("ROAD AHEAD", "2.0 km", "+100 m"), narrow)
+        val short = texts(FieldPainter.paint(Look.Road(ahead(2000.0, End.FAR_ENOUGH)), 480, 90, FieldSettings()))
+        assertEquals(listOf("2.0 km", "+100 m", "5 % max"), short)
+    }
+
+    @Test fun followsTheRidersSettings() {
+        val look = Look.Road(ahead(2000.0, End.FAR_ENOUGH))
+        val plain = texts(FieldPainter.paint(look, 480, 150, FieldSettings(showClimb = false, showSteepest = false)))
+        assertEquals(listOf("ROAD AHEAD", "Main", "2.0 km"), plain)
+        val miles = texts(FieldPainter.paint(look, 480, 150, FieldSettings(imperial = true)))
+        assertTrue(miles.contains("1.2 mi") && miles.contains("+328 ft"))
+        val wahoo = FieldPainter.paint(look, 480, 150, FieldSettings(palette = Palette.WAHOO))
+        assertTrue(wahoo.shapes.filterIsInstance<Fill>().all { it.argb == 0xFFFEFF00.toInt() })
+    }
+
+    @Test fun downhillIsGrey() {
+        assertEquals(Palette.DOWNHILL, Palette.KAROO.colour(-3.0))
+        assertEquals(0xFF1A8C3A.toInt(), Palette.KAROO.colour(0.0))
+        assertEquals(0xFF9020A0.toInt(), Palette.KAROO.colour(25.0))
+    }
+
+    @Test fun saysWhyItCannotDraw() {
+        assertEquals(listOf("ROAD AHEAD", "Start riding", "to see the road ahead"), texts(FieldPainter.paint(Look.Waiting, 480, 150, FieldSettings())))
+        assertEquals(listOf("No elevation here"), texts(FieldPainter.paint(Look.NoHeights("S36E149.hgt"), 480, 80, FieldSettings())))
+    }
+
     // The tracker.
 
     private val side = Road(listOf(east(600.0), Geo.offset(east(600.0), 0.0, 400.0)), name = "Side")

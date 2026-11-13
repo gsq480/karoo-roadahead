@@ -150,6 +150,30 @@ class FollowTest {
         assertTrue(path.lengthM > 650.0)
     }
 
+    @Test fun tellsARoundaboutByItsShapeWhenTheMapDoesNotSay() {
+        val centre = Geo.offset(x, 90.0, 20.0)
+        val ring = (0..12).map { Geo.offset(centre, (270.0 + it * 30.0) % 360.0, 20.0) }
+        assertTrue(MapRoads.looksLikeARoundabout(ring))
+        // An open curve, a long thin loop and a big circuit are not roundabouts.
+        assertTrue(!MapRoads.looksLikeARoundabout(ring.dropLast(2)))
+        val a = Geo.offset(o, 90.0, 150.0)
+        assertTrue(!MapRoads.looksLikeARoundabout(listOf(o, Geo.offset(o, 90.0, 75.0), a, Geo.offset(a, 0.0, 8.0), Geo.offset(o, 0.0, 8.0), o)))
+        assertTrue(!MapRoads.looksLikeARoundabout((0..12).map { Geo.offset(centre, it * 30.0, 200.0) }))
+    }
+
+    @Test fun readsARoadFromAMapsTags() {
+        fun tags(vararg kv: Pair<String, String>) = kv.map { org.mapsforge.core.model.Tag(it.first, it.second) }
+        val pts = line(o, 90.0, 300.0)
+        val road = MapRoads.roadFrom(tags("highway" to "tertiary", "name" to "Main", "oneway" to "-1", "bridge" to "yes"), pts)!!
+        assertEquals("Main", road.name)
+        assertTrue(road.oneway && road.bridge && !road.tunnel && !road.roundabout)
+        // One-way against the way it was drawn: the points are turned round.
+        assertEquals(pts.last(), road.pts.first())
+        assertNull(MapRoads.roadFrom(tags("highway" to "steps"), pts))
+        assertNull(MapRoads.roadFrom(tags("building" to "yes"), pts))
+        assertNull(MapRoads.roadFrom(tags("highway" to "pedestrian", "area" to "yes"), pts))
+    }
+
     @Test fun endsALapOfACircuitMappedAsOnePiece() {
         val a = Geo.offset(o, 90.0, 200.0)
         val b = Geo.offset(a, 0.0, 200.0)

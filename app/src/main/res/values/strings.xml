@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Road Ahead</string>
+    <string name="extension_name">Road Ahead</string>
+    <string name="road_name">Road ahead</string>
+    <string name="road_description">The elevation profile of the road in front of you, with no route loaded. Tap to change the distance.</string>
+</resources>

@@ -16,12 +16,13 @@ import kotlin.system.exitProcess
  * Run a recorded ride through the engine, fix by fix, and score what the field would have shown
  * against what the ride then did. Mac only.
  *
- *   replay <roads.tsv> <folder of .hgt files> <ride.csv> [--want 2000] [--cut] [--moments out.json]
+ *   replay <roads.tsv or file.map> <folder of .hgt files> <ride.csv> [--want 2000] [--cut] [--png fix]
  *
  * The ride file is `time_s,lat,lng,altitude_m` a line. `--cut` chops the roads into map tiles
  * first, the way the Karoo's map files hand them over.
  */
 fun main(args: Array<String>) {
+    if (args.isNotEmpty() && args[0] == "map") return mapCheck(args)
     if (args.size < 3) {
         System.err.println("usage: replay <roads.tsv> <hgt folder> <ride.csv> [--want metres] [--cut] [--moments out.json]")
         exitProcess(2)
@@ -30,9 +31,14 @@ fun main(args: Array<String>) {
     val wantM = flag("--want")?.toDouble() ?: 2000.0
     val cut = "--cut" in args
 
-    var roads = readRoads(File(args[0]))
-    if (cut) roads = cutIntoTiles(roads)
-    val tracker = Tracker(GridRoads(roads), HgtFolder(File(args[1])))
+    // A `.map` file is read the way the Karoo app reads it; anything else is the text extract.
+    val source = if (args[0].endsWith(".map")) au.com.fjellconsulting.roadahead.core.MapRoads(listOf(File(args[0]))) else {
+        var roads = readRoads(File(args[0]))
+        if (cut) roads = cutIntoTiles(roads)
+        GridRoads(roads)
+    }
+    val tracker = Tracker(source, HgtFolder(File(args[1])))
+    val pngAt = flag("--png")?.toInt() ?: -1
 
     class Fix(val pt: Pt, val alt: Double, var cumM: Double = 0.0)
     val ride = File(args[2]).readLines().filter { it.isNotBlank() }.map {
@@ -87,6 +93,14 @@ fun main(args: Array<String>) {
                 println("  fix %4d at %.0f m: %-17s -> %s, %.0f m, %s".format(i, ride[i].cumM, tracker.why,
                     path?.roadName ?: "(no name)", path?.lengthM ?: 0.0, path?.end))
             }
+        }
+        if (pngAt == i) {
+            val set = au.com.fjellconsulting.roadahead.core.FieldSettings()
+            val paint = { l: Look, w: Int, h: Int -> au.com.fjellconsulting.roadahead.core.FieldPainter.paint(l, w, h, set) }
+            val out = File("out/field-$i.png")
+            writePng(listOf(paint(look, 480, 150), paint(look, 480, 300), paint(look, 480, 96), paint(look, 240, 150),
+                paint(Look.Waiting, 480, 150), paint(Look.NoHeights("S36E149.hgt"), 480, 96)), out)
+            println("drew fix $i to $out")
         }
         if (look !is Look.Road) continue
         val ahead = look.ahead
@@ -197,4 +211,104 @@ private fun moment(index: Int, at: Pt, ahead: Ahead, matchedM: Double): String {
     return """  {"fix":$index,"lat":${at.lat},"lng":${at.lng},"road":${if (name == null) "null" else "\"$name\""},""" +
         """"end":"${ahead.end}","lengthM":${"%.0f".format(ahead.lengthM)},"stepM":${ahead.stepM},"climbM":${"%.1f".format(ahead.climbM)},""" +
         """"riddenM":${"%.0f".format(matchedM)},"heights":[$heights]}"""
+}
+
+
+/**
+ * Open a Mapsforge map file and say what's in it around a point: which tags the roads carry,
+ * whether pieces stop at the map tile's edge, and where the engine would go from there.
+ *
+ *   replay map <file.map> <lat> <lng> <course>
+ */
+private fun mapCheck(args: Array<String>) {
+    val file = File(args[1])
+    val at = Pt(args[2].toDouble(), args[3].toDouble())
+    val course = args[4].toDouble()
+    val map = org.mapsforge.map.reader.MapFile(file)
+    val info = map.mapFileInfo
+    println("${file.name}: version ${info.fileVersion}, zoom ${info.zoomLevelMin} to ${info.zoomLevelMax}, made ${java.util.Date(info.mapDate)}, by ${info.createdBy}")
+    println("covers ${info.boundingBox}")
+    val n = 1 shl 14
+    val x = Math.floor((at.lng + 180.0) / 360.0 * n).toInt()
+    val r = Math.toRadians(at.lat)
+    val y = Math.floor((1.0 - Math.log(Math.tan(r) + 1.0 / Math.cos(r)) / Math.PI) / 2.0 * n).toInt()
+    val tile = org.mapsforge.core.model.Tile(x, y, 14.toByte(), 256)
+    val box = tile.boundingBox
+    val ways = map.readMapData(tile).ways
+    val keys = HashMap<String, Int>()
+    val kinds = HashMap<String, Int>()
+    var roads = 0
+    var named = 0
+    var outside = 0
+    var farOutside = 0
+    for (w in ways) {
+        val highway = w.tags.firstOrNull { it.key == "highway" } ?: continue
+        roads++
+        kinds.merge(highway.value, 1, Int::plus)
+        for (t in w.tags) keys.merge(t.key, 1, Int::plus)
+        if (w.tags.any { it.key == "name" }) named++
+        // How far past the tile's edge does the furthest point of the way reach?
+        var reach = 0.0
+        for (line in w.latLongs) for (ll in line) {
+            val dLat = maxOf(box.minLatitude - ll.latitude, ll.latitude - box.maxLatitude, 0.0) * 111_320.0
+            val dLng = maxOf(box.minLongitude - ll.longitude, ll.longitude - box.maxLongitude, 0.0) * 111_320.0 * Math.cos(r)
+            reach = maxOf(reach, dLat, dLng)
+        }
+        if (reach > 1.0) outside++
+        if (reach > 60.0) farOutside++
+    }
+    println("tile 14/$x/$y: ${ways.size} ways, $roads with a highway tag, $named of those named")
+    println("  kinds: " + kinds.entries.sortedByDescending { it.value }.joinToString { "${it.key} ${it.value}" })
+    println("  tags on roads: " + keys.entries.sortedByDescending { it.value }.joinToString { "${it.key} ${it.value}" })
+    println("  roads reaching past the tile's edge: $outside, more than 60 m past: $farOutside")
+    // A wider look for the tags that matter and are rarer: 49 tiles around the point.
+    val wide = HashMap<String, Int>()
+    for (dx in -3..3) for (dy in -3..3) {
+        val t = org.mapsforge.core.model.Tile(x + dx, y + dy, 14.toByte(), 256)
+        for (w in map.readMapData(t).ways) if (w.tags.any { it.key == "highway" }) {
+            for (tag in w.tags) if (tag.key in setOf("junction", "bridge", "tunnel", "oneway", "ref", "name")) wide.merge("${tag.key}=${if (tag.key in setOf("name", "ref")) "*" else tag.value}", 1, Int::plus)
+        }
+    }
+    println("  across 49 tiles: " + wide.entries.sortedByDescending { it.value }.joinToString { "${it.key} ${it.value}" })
+    map.close()
+
+    val source = au.com.fjellconsulting.roadahead.core.MapRoads(listOf(file))
+    // Start on the longest named road in the tile and follow it, as a check that pieces cut at
+    // tile edges join up.
+    val around = source.near(at, 3000.0).orEmpty()
+    println("engine: ${around.size} pieces within 3 km, ${around.count { it.roundabout }} of them roundabouts told by shape or tag")
+    val start = around.filter { it.kind in setOf("primary", "secondary", "trunk") && !it.roundabout }.maxByOrNull { it.pts.size }
+    if (start != null) {
+        println("engine: that road starts at %.6f %.6f heading %.0f".format(start.pts[0].lat, start.pts[0].lng, Geo.bearing(start.pts[0], start.pts[1])))
+        for (forward in listOf(true, false)) {
+            if (!forward && start.oneway) continue
+            val spot = au.com.fjellconsulting.roadahead.core.Spot(start, if (forward) 0 else start.pts.size - 2, if (forward) 0.0 else 1.0, forward)
+            val p = au.com.fjellconsulting.roadahead.core.RoadFollow(source).follow(spot, 8000.0)
+            // An end right on a tile's edge would mean two pieces of one road failed to join.
+            val end = p.points.last().pt
+            val fx = (end.lng + 180.0) / 360.0 * n
+            val er = Math.toRadians(end.lat)
+            val fy = (1.0 - Math.log(Math.tan(er) + 1.0 / Math.cos(er)) / Math.PI) / 2.0 * n
+            val tileM = 40_075_000.0 * Math.cos(er) / n
+            val edgeM = minOf(fx - Math.floor(fx), Math.ceil(fx) - fx, fy - Math.floor(fy), Math.ceil(fy) - fy) * tileM
+            var crossed = 0
+            for (i in 1 until p.points.size) {
+                val a = p.points[i - 1].pt
+                val b = p.points[i].pt
+                if (Math.floor((a.lng + 180.0) / 360.0 * n) != Math.floor((b.lng + 180.0) / 360.0 * n)) crossed++
+            }
+            println("engine: along %s (%s) %s: followed %.0f m, ended %s, %.0f m from a tile edge, crossed %d tile edges east-west".format(
+                start.label ?: "(no name)", start.kind, if (forward) "forwards" else "backwards", p.lengthM, p.end, edgeM, crossed))
+        }
+    }
+    val near = source.near(at, 45.0)
+    println("engine: ${near?.size} pieces within 45 m of the point")
+    val snapped = near?.let { au.com.fjellconsulting.roadahead.core.RoadSnap().snap(it, at, course) }
+    if (snapped == null) {
+        println("engine: no road to snap to here")
+        return
+    }
+    val path = au.com.fjellconsulting.roadahead.core.RoadFollow(source).follow(snapped.spot, 5000.0)
+    println("engine: snapped %.1f m away to %s (%s), followed %.0f m, ended %s".format(
+        snapped.offM, path.roadName ?: "(no name)", path.roadKind, path.lengthM, path.end))
 }

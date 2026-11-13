@@ -21,5 +21,5 @@ dependencyResolutionManagement {
 }
 rootProject.name = "RoadAhead"
 // core: the engine, plain Kotlin, runs on the Mac. replay: a Mac-only tool that runs it over
-// real roads and rides. The Karoo app joins as :app.
-include(":core", ":replay")
+// real roads and rides. app: the Karoo extension.
+include(":core", ":replay", ":app")

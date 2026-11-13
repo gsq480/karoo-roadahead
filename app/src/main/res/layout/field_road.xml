@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Road ahead field: one picture, drawn by the app at the field's own size. The whole
+     field is the tap target for changing the distance. -->
+<ImageView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/road_image"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000"
+    android:contentDescription="@string/road_name"
+    android:scaleType="fitXY" />
