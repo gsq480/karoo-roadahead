@@ -1,0 +1,13 @@
+.gradle/
+.kotlin/
+build/
+local.properties
+*.keystore
+*.jks
+.DS_Store
+CLAUDE.md
+AGENTS.md
+# Map files, elevation files, road extracts and rides used for testing on the Mac. Large, and
+# the map files are Hammerhead's.
+fixtures/
+out/
