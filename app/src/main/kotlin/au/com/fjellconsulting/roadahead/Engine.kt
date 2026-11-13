@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.os.Environment
 import android.os.SystemClock
 import android.util.Log
+import au.com.fjellconsulting.roadahead.core.End
 import au.com.fjellconsulting.roadahead.core.Geo
 import au.com.fjellconsulting.roadahead.core.HgtFolder
 import au.com.fjellconsulting.roadahead.core.Look
@@ -170,7 +171,15 @@ class Engine(private val app: RoadAheadApp) {
     /** One line saying what a look is, for the log and the status screen. */
     fun describe(look: Look): String = when (look) {
         is Look.Road -> look.ahead.let {
-            "%s, %.0f m of %.0f shown, +%.0f m, ends %s".format(it.roadName ?: "a road with no name", it.lengthM, it.wantM, it.climbM, it.end)
+            val stop = when (it.end) {
+                End.FAR_ENOUGH -> "the road carries on past that"
+                End.TURN -> "then a junction"
+                End.ROAD_ENDS -> "then the road ends"
+                End.LOOP -> "then it comes back round"
+                End.NO_MAP -> "then the map ends"
+                End.NO_HEIGHTS -> "then the elevation files end"
+            }
+            "%s, %.0f m of %.0f m shown, %.0f m of climbing, %s".format(it.roadName ?: "a road with no name", it.lengthM, it.wantM, it.climbM, stop)
         }
         Look.Waiting -> "waiting for you to move"
         Look.NoRoad -> "no mapped road nearby"
