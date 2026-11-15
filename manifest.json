@@ -1,0 +1,16 @@
+{
+  "label": "Road Ahead",
+  "packageName": "au.com.fjellconsulting.roadahead",
+  "latestApkUrl": "https://github.com/gsq480/karoo-roadahead/releases/latest/download/roadahead.apk",
+  "latestVersion": "0.1.0",
+  "latestVersionCode": 1,
+  "developer": "github.com/gsq480",
+  "description": "One ride field: the elevation profile of the road in front of you, with no route loaded. It guesses the road ahead from the one you're on, reads the roads from the Karoo's own offline map, and fetches elevation over Wi-Fi. Tap the field to step between 2, 5 and 10 km.",
+  "releaseNotes": "First public version, a beta. Tested on a Karoo 3.",
+  "screenshotUrls": [
+    "https://github.com/gsq480/karoo-roadahead/releases/latest/download/field.png"
+  ],
+  "tags": [
+    "navigation"
+  ]
+}

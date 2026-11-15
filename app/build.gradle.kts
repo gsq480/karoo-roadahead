@@ -21,6 +21,27 @@ android {
         versionName = "0.1.0"
     }
 
+    // The release key is kept outside the repo. Set ROADAHEAD_KEYSTORE to its path and
+    // ROADAHEAD_KEYSTORE_PASSWORD to its password to build an APK that installs over the
+    // published one. Without them the release build comes out unsigned.
+    val keystore: String? = System.getenv("ROADAHEAD_KEYSTORE")
+    signingConfigs {
+        if (keystore != null) {
+            create("release") {
+                storeFile = file(keystore)
+                storePassword = System.getenv("ROADAHEAD_KEYSTORE_PASSWORD")
+                keyAlias = "roadahead"
+                keyPassword = System.getenv("ROADAHEAD_KEYSTORE_PASSWORD")
+            }
+        }
+    }
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.findByName("release")
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

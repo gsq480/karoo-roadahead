@@ -1,8 +1,78 @@
 # Road Ahead
 
-A Karoo extension with one ride field, **Road ahead**: the elevation profile of the road in front
-of you, with no route loaded. It guesses the road from the one you're on, as Wahoo's Summit does.
-It runs entirely on the Karoo: no phone, no server, no account.
+A Hammerhead Karoo extension with one ride field, **Road ahead**: the elevation profile of the
+road in front of you, with no route loaded. It guesses the road ahead from the one you're on, as
+Wahoo's route-less Summit view does. It runs entirely on the Karoo: no phone, no server, no
+account.
+
+![The Road ahead field at four sizes, and what it shows before you move or with no elevation file](docs/field.png)
+
+This is version 0.1.0, a beta. It has been tested on a Karoo 3 at the desk and against recorded
+rides. It has not been tested on a Karoo 2. If it gets a road wrong, open an issue and say where.
+
+## What the field shows
+
+- The profile of the road ahead, coloured by grade in blocks, with you at the left edge. The
+  colours match the Karoo's own climb colours. Downhill is grey.
+- The distance shown, the climbing inside it and the steepest pitch.
+- The name of the road it is following.
+- A junction mark where the road ends in a T-junction or a fork. The profile stops there. Turn
+  onto a new road and it redraws within a couple of seconds.
+
+Tap the field to step between 2, 5 and 10 km. It works with or without a route, and before you
+press start.
+
+## Install
+
+**On a Karoo 3:**
+
+1. On your phone, open the [latest release](https://github.com/gsq480/karoo-roadahead/releases/latest).
+2. Press and hold `roadahead.apk`, choose **Share**, then the Hammerhead app.
+3. On the Karoo, tap **Install**.
+
+**On a Karoo 2:** download `roadahead.apk` and run `adb install roadahead.apk` over a cable.
+
+To update, press and hold the app's icon on the Karoo and tap **Update**.
+
+## Set it up
+
+1. Open **Road Ahead** and tap **Allow map access**, then **Allow**. The app closes when you
+   allow it, so open it again.
+2. Leave the Karoo on Wi-Fi for a minute or two. It fetches the elevation file for where it is,
+   and for anywhere within 30 km. One file is about 12 MB. The Karoo turns Wi-Fi off on a ride,
+   so do this at home, or where you're staying when you travel.
+3. Add the field to a ride page: **Profiles**, your profile, **Data Pages**, a page, **Add
+   Field**, **ROAD AHEAD**, **Road ahead**.
+
+The field says **Start riding** until you have moved about 8 m. With no elevation file for where
+you are, it says so and draws nothing.
+
+## Settings
+
+The app's screen shows the field as it looks right now, what it has found, and every setting:
+
+- The distances a tap steps through: any of 1, 2, 5, 10 and 20 km.
+- The colours: the Karoo's or Wahoo's.
+- The numbers on the field: climbing ahead, steepest pitch, or neither.
+- How far around you to fetch elevation: 10, 30 or 60 km.
+- The elevation files held, each with **Delete**, and **Fetch now**.
+
+Units follow the Karoo's rider profile.
+
+## What it doesn't do well
+
+- It predicts one road. On a climb with turns it shows the profile to the first forced turn,
+  then jumps when you turn. Load a route for those.
+- In suburbs with a junction every few hundred metres, the profile is often shorter than the
+  distance you asked for.
+- The elevation grid is 30 m. Off-road, under heavy tree cover and in cuttings, expect the
+  shape to be right and the pitch numbers to be soft.
+- It doesn't detect climbs or send alerts. The Karoo's Climber does both with no route.
+
+Against five recorded rides (214 km), the predicted heights sat a median 1.5 to 3.0 m from the
+altitude the ride recorded. The whole 2 km picture was the road then ridden 27% to 66% of the
+time, depending on the ride. The guess turned off while the rider went straight in 2% to 9% of
+moments.
 
 ## How it works
 
@@ -20,50 +90,56 @@ It runs entirely on the Karoo: no phone, no server, no account.
 
 Every number those rules turn on is in `core/.../Rules.kt`.
 
-## Layout
-
-- `core/` is the engine. Plain Kotlin, no Android, so it runs and tests on the Mac. It also
-  holds the reader for the Karoo's map files (`MapRoads.kt`) and the drawing (`Picture.kt`), which
-  decides every shape and colour so the Karoo and the Mac draw the same picture.
-- `app/` is the Karoo extension: the field, the Wi-Fi elevation fetch and the settings screen.
-- `replay/` is a Mac-only tool that runs a recorded ride through the engine and scores it.
-- `fixtures/` and `out/` are not in git: test data and the replay tool's output.
-
-## Build and test
+The roads come from the Karoo's own offline maps, which are Mapsforge files in
+`/sdcard/offline/maps`. Only the storage permission opens that folder, so the app targets
+Android API 28, where the ordinary prompt can still grant it. Nothing is written there. If the
+prompt doesn't appear, grant it over a cable:
 
 ```
-export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
-./gradlew --no-daemon :core:test
-./gradlew --no-daemon :replay:installDist
-./gradlew --no-daemon :app:assembleDebug
+adb shell pm grant au.com.fjellconsulting.roadahead android.permission.WRITE_EXTERNAL_STORAGE
+adb shell pm grant au.com.fjellconsulting.roadahead android.permission.READ_EXTERNAL_STORAGE
+```
+
+The elevation comes from Terrain Tiles on AWS Open Data, one file for each degree square.
+
+## Build it yourself
+
+### Layout
+
+- `core/` is the engine. Plain Kotlin, no Android, so it runs and tests on a computer. It also
+  holds the reader for the Karoo's map files (`MapRoads.kt`) and the drawing (`Picture.kt`), which
+  decides every shape and colour so the Karoo and the computer draw the same picture.
+- `app/` is the Karoo extension: the field, the Wi-Fi elevation fetch and the settings screen.
+- `replay/` runs a recorded ride through the engine on a computer and scores it.
+- `fixtures/` and `out/` are not in git: test data and the replay tool's output.
+
+### Build and test
+
+You need JDK 17 and the Android SDK.
+
+```
+./gradlew :core:test
+./gradlew :replay:installDist
+./gradlew :app:assembleDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-## On the Karoo
-
-1. Open **Road Ahead** and tap **Allow map access**. The Karoo keeps its offline maps in
-   `/sdcard/offline/maps`, a folder only the storage permission opens. The app targets Android
-   API 28 so that the ordinary prompt can grant it. If the prompt doesn't appear:
-   `adb shell pm grant au.com.fjellconsulting.roadahead android.permission.WRITE_EXTERNAL_STORAGE`
-   and the same for `READ_EXTERNAL_STORAGE`.
-2. Leave the Karoo on Wi-Fi. It fetches the elevation file for where it is, and for anywhere
-   within the distance set on the screen (30 km to start with). One file is about 12 MB to fetch.
-3. Add the **Road ahead** field to a ride page, under ROAD AHEAD. Tap it to step through the
-   distances.
-
-The app's screen shows the field as it looks right now, what it has found, and every setting:
-the distances a tap steps through, the colours, the numbers on the field, how far around to fetch
-elevation, and the files held. Units follow the Karoo's rider profile.
+A debug build won't install over the published app, because the published app is signed with a
+different key. Uninstall that first.
 
 ### Check it at the desk
 
 ```
-adb shell am start -n au.com.fjellconsulting.roadahead/.SettingsActivity --ez demo true --ef lat -35.3272 --ef lng 149.0192 --ef course 330   # put it on Mount Stromlo Road for a minute
-adb shell am start -n au.com.fjellconsulting.roadahead/.SettingsActivity --ez fetch true   # fetch elevation files now
-adb logcat -s RoadAhead                                                                     # maps opened, files fetched, each new prediction
+adb shell am start -n au.com.fjellconsulting.roadahead/.SettingsActivity --activity-clear-top --ez demo true --ef lat -35.3272 --ef lng 149.0192 --ef course 330
+adb shell am start -n au.com.fjellconsulting.roadahead/.SettingsActivity --activity-clear-top --ez fetch true
+adb logcat -s RoadAhead
 ```
 
-## Check a map file
+The first command puts the Karoo at the foot of Mount Stromlo Road in Canberra for a minute,
+heading up. Use a point and a heading on a road in a map your Karoo holds. The second fetches
+elevation files now. The third shows the maps opened, the files fetched and each new prediction.
+
+### Check a map file
 
 ```
 ./replay/build/install/replay/bin/replay map fixtures/some.map -35.3272 149.0192 330
@@ -71,13 +147,12 @@ adb logcat -s RoadAhead                                                         
 
 It prints the file's version and zoom levels, which tags its roads carry, whether pieces stop at
 the map tile's edge, how many roundabouts it finds, and where the engine goes from that point. A
-`.map` file also works as the road file of a replay, in place of the text extract. That is the
-check that the Karoo's own maps give the same scores as the OpenStreetMap extract.
+`.map` file also works as the road file of a replay, in place of the text extract.
 
-## Replay a ride
+### Replay a ride
 
 ```
-./replay/build/install/replay/bin/replay fixtures/roads-act.tsv fixtures fixtures/ride.csv
+./replay/build/install/replay/bin/replay fixtures/roads.tsv fixtures fixtures/ride.csv
 ```
 
 Arguments: the road file, the folder that holds the `.hgt` elevation files, and the ride. Options:
@@ -93,22 +168,26 @@ Arguments: the road file, the folder that holds the `.hgt` elevation files, and 
 It reports how often the picture was the road then ridden, who turned when it wasn't, and how far
 the predicted heights sat from the ride's own altitude.
 
-## Test data
+### Test data
 
 All of it lives in `fixtures/`, which git ignores.
 
-- **Elevation:** `S36E149.hgt`, from Terrain Tiles on AWS Open Data.
-  `curl -O https://elevation-tiles-prod.s3.amazonaws.com/skadi/S36/S36E149.hgt.gz`, then `gunzip`.
-- **Roads:** `roads-act.tsv`, made from an Overpass API query for every `highway` way in
-  south Canberra (`-35.48,148.96,-35.22,149.20`, `out tags geom`). One road a line: kind, name,
-  ref, flags (`o` one-way, `r` roundabout, `b` bridge, `t` tunnel), then the points. Overpass
-  answers 406 without a `User-Agent` header.
-- **A map in the Karoo's format:** any file from `download.mapsforge.org/maps/v5/`. The small
-  `australia-oceania/new-caledonia.map` (51 MB) was used to test the reader.
-- **Rides:** `ride-<id>.csv`, `time_s,lat,lng,altitude_m`.
+- **Elevation:** a `.hgt` file from Terrain Tiles on AWS Open Data, named by its south-west
+  corner. For example, `curl -O https://elevation-tiles-prod.s3.amazonaws.com/skadi/S36/S36E149.hgt.gz`,
+  then `gunzip`.
+- **Roads:** a text file made from an Overpass API query for every `highway` way in a box
+  (`out tags geom`). One road a line, tab-separated: kind, name, ref, flags (`o` one-way, `r`
+  roundabout, `b` bridge, `t` tunnel), then the points as `lat,lng` pairs with spaces between.
+  Overpass answers 406 without a `User-Agent` header.
+- **A map in the Karoo's format:** any file from `download.mapsforge.org/maps/v5/`.
+- **Rides:** a CSV with no header: `time_s,lat,lng,altitude_m`.
 
-## Credits
+## Credits and licence
+
+Road Ahead is released under the Apache License 2.0. See `LICENSE`.
 
 Road data is from OpenStreetMap contributors (ODbL). Elevation data is from Terrain Tiles on AWS
-Open Data. Map files are read with Mapsforge (LGPL-3.0), unmodified. Grade colours follow the
-Karoo's own climb colours.
+Open Data. Map files are read with Mapsforge (LGPL-3.0), unmodified. The Karoo SDK is
+Hammerhead's `karoo-ext` (Apache-2.0). Grade colours follow the Karoo's own climb colours.
+
+Road Ahead is not made or endorsed by Hammerhead, SRAM or Wahoo.

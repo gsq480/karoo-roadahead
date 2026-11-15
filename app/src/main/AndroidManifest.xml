@@ -44,5 +44,10 @@
                 android:name="io.hammerhead.karooext.EXTENSION_INFO"
                 android:resource="@xml/extension_info" />
         </service>
+
+        <!-- Where the Karoo looks for a newer version when a rider taps Update. -->
+        <meta-data
+            android:name="io.hammerhead.karooext.MANIFEST_URL"
+            android:value="https://github.com/gsq480/karoo-roadahead/releases/latest/download/manifest.json" />
     </application>
 </manifest>
