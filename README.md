@@ -10,6 +10,8 @@ account.
 This is version 0.2.0, a beta. It has been tested on a Karoo 3 at the desk and against recorded
 rides. It has not been tested on a Karoo 2. If it gets a road wrong, open an issue and say where.
 
+The page for riders, with pictures and a straight install button: https://karoo-roadahead.pages.dev
+
 Road Ahead is free. If it's useful to you, you can [leave a tip](https://ko-fi.com/glen840924).
 
 ## What the field shows
