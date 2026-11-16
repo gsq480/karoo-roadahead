@@ -11,3 +11,6 @@ AGENTS.md
 # the map files are Hammerhead's.
 fixtures/
 out/
+# Cloudflare and design-tool working files.
+.wrangler/
+.taste-skill/
