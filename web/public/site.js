@@ -15,7 +15,7 @@ document.querySelectorAll(".reveal").forEach((el) => seen.observe(el));
 const DISTANCES = [
   { km: "2", file: "2000", caption: "Free · no phone · no account" },
   { km: "5", file: "5000", caption: "Tap the field and it shows 5 km." },
-  { km: "10", file: "10000", caption: "Tap again for 10 km. It stops at the junction it can't call." },
+  { km: "10", file: "10000", caption: "Tap again for 10 km. Past a junction it guesses, and draws the guess dimmer." },
 ];
 for (const d of DISTANCES) { new Image().src = `assets/field-${d.file}.png`; new Image().src = `assets/tall-${d.file}.png`; }
 function swap(img, src, alt) {
@@ -50,7 +50,7 @@ $(".bigfield").addEventListener("click", () => {
 const row = (a, b) => `<div class="row"><span>${a}</span><b>${b}</b></div>`;
 const STAGES = [
   ["First, it finds your road.", row("Nearest road that runs your way", "Uriarra Road") + row("A footpath beside it", "ignored") + row("Until you leave it", "it holds on")],
-  ["Then it follows it ahead.", row("A piece with the same name", "carry on") + row("The straightest way on, within 30°", "carry on") + row("A T-junction or a fork", "stop there")],
+  ["Then it follows it ahead.", row("A piece with the same name", "carry on") + row("The straightest way on, within 30°", "carry on") + row("A T-junction or a fork", "its best guess, drawn dimmer")],
   ["Next, it reads the heights.", row("Elevation grid", "30 m") + row("A sample along the road", "every 25 m") + row("Bridges and tunnels", "ruled straight")],
   ["Last, it draws the road.", `<img src="assets/field-5000.png" width="480" height="150" alt="The Road ahead field: 5 km of Uriarra Road">` + row("Blocks coloured by grade", "the Karoo's own colours") + row("Downhill", "grey")],
 ];

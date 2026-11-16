@@ -48,7 +48,7 @@
 <section class="tap" id="tap">
   <div class="tap-words">
     <h2 class="reveal" data-part="tap-heading">The next 2 km.</h2>
-    <p class="reveal">Tap the field on a ride and it steps between 2, 5 and 10 km. Try it here. This is Uriarra Road, drawn by the same code that runs on the Karoo.</p>
+    <p class="reveal">Tap the field on a ride and it steps between 2, 5 and 10 km. Try it here. This is Uriarra Road, drawn by the same code that runs on the Karoo. On a half-width tile it drops the numbers and shows the graph alone.</p>
   </div>
   <button class="bigfield reveal" data-ui type="button" aria-label="The Road ahead field. Tap it to step between 2, 5 and 10 kilometres.">
     <img data-part="tap-field" src="assets/tall-2000.png" width="480" height="300" alt="The field at its tall size: 2.0 km of Uriarra Road">
@@ -57,13 +57,13 @@
 
 <section class="proof" id="proof">
   <div class="proof-words reveal">
-    <h2>Checked on 214 km of real rides</h2>
-    <p>The guess was replayed against five recorded rides around Canberra and scored against the road then ridden. It gets the heights right and stops at junctions it can't call. When it's wrong, it's mostly because the rider turned off, and nothing predicts that.</p>
+    <h2>Checked on 454 km of real rides</h2>
+    <p>The guess was replayed against nine recorded rides around Canberra and scored against the road then ridden. It gets the heights right and almost always fills the distance you asked for. Past a junction it is a guess, and it says so by drawing that part dimmer.</p>
   </div>
   <dl class="figures">
     <div class="reveal"><dt>1.5 to 3 m</dt><dd>The typical gap between the height it drew and the height the ride recorded.</dd></div>
-    <div class="reveal"><dt>2 to 9%</dt><dd>How often it guessed a turn when the rider went straight on.</dd></div>
-    <div class="reveal"><dt>27 to 66%</dt><dd>How often the whole next 2 km was the road then ridden, depending on the ride.</dd></div>
+    <div class="reveal"><dt>82%</dt><dd>How often the field showed the full 2 km. It was 44% when it stopped at every junction.</dd></div>
+    <div class="reveal"><dt>58%</dt><dd>How much of the picture, on average, turned out to be the road then ridden.</dd></div>
   </dl>
 </section>
 
@@ -103,7 +103,7 @@
       <li><button type="button" aria-controls="answer" data-a="No. That's the point. It works on any ride, and before you press start. With a route loaded it still follows the road you're actually on.">Does it need a route?</button></li>
       <li><button type="button" aria-controls="answer" data-a="No. Everything runs on the Karoo. The roads come from the Karoo's own offline map, and the elevation is fetched once over Wi-Fi.">Does it need my phone or an account?</button></li>
       <li><button type="button" aria-controls="answer" data-a="The Karoo's Climber draws a profile only once it has detected a real climb. On lumps and flats with no route, its climb fields read Off Climb. Road Ahead draws the road all the time.">Doesn't the Karoo do this already?</button></li>
-      <li><button type="button" aria-controls="answer" data-a="It follows one road. Where that road meets a T-junction or a fork, it can't know which way you'll turn, so it stops there and marks the junction. Turn, and it redraws in a couple of seconds.">Why does the profile stop short?</button></li>
+      <li><button type="button" aria-controls="answer" data-a="It carries on along the likeliest road: the one with the same name, otherwise the smallest turn. From the first junction it had to guess at, the profile is dimmer, with a tick where the guessing starts. Turn the other way and it redraws in a couple of seconds. You can set it to stop at junctions instead.">What does it do at a junction?</button></li>
       <li><button type="button" aria-controls="answer" data-a="The elevation grid is 30 m. On sealed roads the shape and the heights are good. Off-road, under heavy tree cover and in cuttings, trust the shape more than the pitch numbers.">How accurate is it?</button></li>
       <li><button type="button" aria-controls="answer" data-a="Nothing about you. It downloads elevation files for the one-degree squares around you from a public archive, so that archive's server sees which squares were asked for, and nothing else.">What does it send?</button></li>
       <li><button type="button" aria-controls="answer" data-a="The Karoo 3, installed from your phone. It should also run on a Karoo 2 over a cable, but that hasn't been tested yet.">Which Karoos does it work on?</button></li>

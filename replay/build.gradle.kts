@@ -15,6 +15,9 @@ kotlin {
 
 application {
     mainClass.set("au.com.fjellconsulting.roadahead.replay.MainKt")
+    // The PNG writer uses Java's drawing classes. Without this, on a Mac the JVM can sit
+    // waiting on the window system after the pictures are written and never exit.
+    applicationDefaultJvmArgs = listOf("-Djava.awt.headless=true")
 }
 
 dependencies {
