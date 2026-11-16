@@ -1,6 +1,7 @@
 package au.com.fjellconsulting.roadahead
 
 import android.content.Context
+import au.com.fjellconsulting.roadahead.core.Labels
 import au.com.fjellconsulting.roadahead.core.Palette
 import java.util.concurrent.CopyOnWriteArraySet
 
@@ -61,6 +62,25 @@ class Prefs(context: Context) {
         get() = store.getBoolean("show_steepest", true)
         set(value) {
             store.edit().putBoolean("show_steepest", value).apply()
+            changed()
+        }
+
+    /** When the field carries its words and numbers. A half-width tile is all graph unless this says Always. */
+    var labels: Labels
+        get() = runCatching { Labels.valueOf(store.getString("labels", null) ?: "BIG_TILES") }.getOrDefault(Labels.BIG_TILES)
+        set(value) {
+            store.edit().putString("labels", value.name).apply()
+            changed()
+        }
+
+    /**
+     * At a T-junction or a fork: carry on along the likeliest road, so the field always shows the
+     * distance asked for, or stop the picture there.
+     */
+    var through: Boolean
+        get() = store.getBoolean("through", true)
+        set(value) {
+            store.edit().putBoolean("through", value).apply()
             changed()
         }
 

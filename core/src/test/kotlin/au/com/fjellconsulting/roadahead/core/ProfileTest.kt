@@ -136,10 +136,62 @@ class ProfileTest {
     }
 
     @Test fun dropsWhatDoesNotFitANarrowOrShortField() {
-        val narrow = texts(FieldPainter.paint(Look.Road(ahead(2000.0, End.FAR_ENOUGH)), 240, 150, FieldSettings()))
+        val narrow = texts(FieldPainter.paint(Look.Road(ahead(2000.0, End.FAR_ENOUGH)), 240, 150, FieldSettings(labels = Labels.ALWAYS)))
         assertEquals(listOf("ROAD AHEAD", "2.0 km", "+100 m"), narrow)
         val short = texts(FieldPainter.paint(Look.Road(ahead(2000.0, End.FAR_ENOUGH)), 480, 90, FieldSettings()))
         assertEquals(listOf("2.0 km", "+100 m", "5 % max"), short)
+    }
+
+    @Test fun aHalfWidthTileIsAllGraphUnlessTheRiderAsksForWords() {
+        val look = Look.Road(ahead(2000.0, End.FAR_ENOUGH))
+        assertEquals(emptyList<String>(), texts(FieldPainter.paint(look, 240, 150, FieldSettings())))
+        assertEquals(emptyList<String>(), texts(FieldPainter.paint(look, 480, 150, FieldSettings(labels = Labels.NEVER))))
+        assertEquals(5, texts(FieldPainter.paint(look, 480, 150, FieldSettings())).size)
+        // With no words the graph takes the room they left.
+        fun top(p: Picture) = p.shapes.filterIsInstance<Fill>().minOf { f -> f.ys.min() }
+        assertTrue(top(FieldPainter.paint(look, 240, 150, FieldSettings())) < top(FieldPainter.paint(look, 240, 150, FieldSettings(labels = Labels.ALWAYS))) - 20f)
+    }
+
+    @Test fun aJunctionWithNoWordsKeepsItsMarkAndDropsTheText() {
+        val p = FieldPainter.paint(Look.Road(ahead(1100.0, End.TURN)), 240, 150, FieldSettings())
+        assertEquals(emptyList<String>(), texts(p))
+        assertTrue(p.shapes.filterIsInstance<Stroke>().any { it.dashed })
+    }
+
+    @Test fun theLineIsBoldAndAFlatRoadRunsThroughTheMiddle() {
+        val dists = sampleDists(2000.0, 25.0)
+        val flat = Ahead(25.0, DoubleArray(dists.size) { 600.0 }, 2000.0, 2000.0, End.FAR_ENOUGH, "Main")
+        val p = FieldPainter.paint(Look.Road(flat), 240, 150, FieldSettings())
+        val line = p.shapes.filterIsInstance<Stroke>().first { !it.dashed }
+        assertTrue("line is ${line.width} px", line.width >= 3f)
+        // No words on this tile, so the graph has the whole height: the middle is about 75.
+        assertTrue("flat line at ${line.ys[0]}", line.ys.all { it in 65f..85f })
+    }
+
+    @Test fun aClimbStartsLowAndADescentStartsHigh() {
+        fun line(slope: Double): Stroke {
+            val dists = sampleDists(2000.0, 25.0)
+            val a = Ahead(25.0, DoubleArray(dists.size) { 600.0 + dists[it] * slope }, 2000.0, 2000.0, End.FAR_ENOUGH, "Main")
+            return FieldPainter.paint(Look.Road(a), 240, 150, FieldSettings()).shapes.filterIsInstance<Stroke>().first { !it.dashed }
+        }
+        val up = line(0.06)
+        val down = line(-0.06)
+        // y grows downwards: a climb starts near the bottom, a descent near the top.
+        assertTrue(up.ys.first() > 110f && up.ys.last() < 40f)
+        assertTrue(down.ys.first() < 40f && down.ys.last() > 110f)
+    }
+
+    @Test fun pastAGuessedJunctionTheBlocksAreDimmedAndATickMarksIt() {
+        val dists = sampleDists(2000.0, 25.0)
+        val a = Ahead(25.0, DoubleArray(dists.size) { 600.0 + dists[it] * 0.05 }, 2000.0, 2000.0, End.FAR_ENOUGH, "Main", guessFromM = 1000.0)
+        val p = FieldPainter.paint(Look.Road(a), 480, 150, FieldSettings())
+        val fills = p.shapes.filterIsInstance<Fill>()
+        assertEquals(10, fills.count { it.argb == 0xFFF0D800.toInt() })
+        assertEquals(10, fills.count { it.argb == FieldPainter.dim(0xFFF0D800.toInt()) })
+        // The tick stands on the line at the junction, half way across.
+        assertTrue(p.shapes.filterIsInstance<Stroke>().any { !it.dashed && it.xs.size == 2 && it.xs[0] == it.xs[1] && it.xs[0] in 238f..242f })
+        // Nothing known is dimmed when there is no guess in view.
+        assertTrue(FieldPainter.paint(Look.Road(ahead(2000.0, End.FAR_ENOUGH)), 480, 150, FieldSettings()).shapes.filterIsInstance<Fill>().all { it.argb == 0xFFF0D800.toInt() })
     }
 
     @Test fun followsTheRidersSettings() {

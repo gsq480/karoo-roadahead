@@ -37,7 +37,8 @@ fun main(args: Array<String>) {
         if (cut) roads = cutIntoTiles(roads)
         GridRoads(roads)
     }
-    val tracker = Tracker(source, HgtFolder(File(args[1])))
+    // The app carries on through junctions on a guess. `--stop` replays the older rule, which stops there.
+    val tracker = Tracker(source, HgtFolder(File(args[1]))).also { it.through = "--stop" !in args }
     val pngAt = flag("--png")?.toInt() ?: -1
 
     class Fix(val pt: Pt, val alt: Double, var cumM: Double = 0.0)

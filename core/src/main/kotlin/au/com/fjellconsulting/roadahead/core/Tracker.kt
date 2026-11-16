@@ -38,6 +38,19 @@ class Tracker(
     private var profile: Profile? = null
     private var posM = 0.0
 
+    /**
+     * The rider's choice at a T-junction or a fork: carry on along the likeliest road so the
+     * picture always reaches the distance asked for, or stop there. Changing it drops the
+     * prediction in hand.
+     */
+    var through: Boolean = false
+        set(value) {
+            if (field != value) {
+                field = value
+                forget()
+            }
+        }
+
     /** How many times a new road has been worked out. For the status screen and the tests. */
     var predictions = 0
         private set
@@ -75,7 +88,7 @@ class Tracker(
             predictedAt = p
             val near = roads.near(p, rules.snapRadiusM + 10.0) ?: return forget(Look.NoMap)
             val snapped = snap.snap(near, p, heading) ?: return forget(Look.NoRoad)
-            val next = follow.follow(snapped.spot, wantM + EXTRA_M)
+            val next = follow.follow(snapped.spot, wantM + EXTRA_M, through)
             predictions++
             path = next
             posM = 0.0
@@ -144,7 +157,9 @@ class Tracker(
         val dists = sampleDists(shown, prof.stepM)
         val heights = DoubleArray(dists.size) { prof.heightAt(posM + dists[it]) }
         val end = if (left > wantM + 0.5) End.FAR_ENOUGH else prof.end
-        return Ahead(prof.stepM, heights, shown, wantM, end, prof.roadName)
+        // The first junction still ahead that was taken on a guess, if it is in view.
+        val guess = prof.guessesM.firstOrNull { it > posM + 1.0 }?.minus(posM)?.takeIf { it < shown - 1.0 }
+        return Ahead(prof.stepM, heights, shown, wantM, end, prof.roadName, guess)
     }
 
     private companion object {

@@ -19,6 +19,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import au.com.fjellconsulting.roadahead.core.FieldPainter
 import au.com.fjellconsulting.roadahead.core.FieldSettings
+import au.com.fjellconsulting.roadahead.core.Labels
 import au.com.fjellconsulting.roadahead.core.Palette
 
 /**
@@ -81,6 +82,14 @@ class SettingsActivity : Activity() {
 
         page.addView(heading("Colours"))
         page.addView(choices(Palette.values().map { it.label }, Palette.values().indexOf(prefs.palette)) { prefs.palette = Palette.values()[it] })
+
+        page.addView(heading("Words and numbers on the field"))
+        page.addView(choices(Labels.values().map { it.label }, Labels.values().indexOf(prefs.labels)) { prefs.labels = Labels.values()[it] })
+        page.addView(text("A big tile is a full-width one. A half-width tile then shows the graph alone.", 14f, GREY))
+
+        page.addView(heading("At a junction"))
+        page.addView(choices(listOf("Carry on along the likeliest road", "Stop the picture there"), if (prefs.through) 0 else 1) { prefs.through = it == 0 })
+        page.addView(text("Carrying on always shows the full distance. Past the first guess the picture is dimmer, with a tick where the guessing starts.", 14f, GREY))
 
         page.addView(heading("Numbers on the field"))
         page.addView(check("Climbing ahead", prefs.showClimb).apply { setOnClickListener { prefs.showClimb = isChecked } })
@@ -163,7 +172,7 @@ class SettingsActivity : Activity() {
         status.text = "$maps\n$elevation ${app.download.status}\n\nRight now: ${engine.describe(engine.look.value)}.\n" +
             "Showing ${app.prefs.wantKm} km. Add the Road ahead field to a ride page under ROAD AHEAD."
         allow.visibility = if (engine.mapsAllowed) View.GONE else View.VISIBLE
-        val settings = FieldSettings(app.prefs.palette, app.prefs.showClimb, app.prefs.showSteepest, engine.imperial)
+        val settings = FieldSettings(app.prefs.palette, app.prefs.showClimb, app.prefs.showSteepest, engine.imperial, app.prefs.labels)
         preview.setImageBitmap(Draw.bitmap(FieldPainter.paint(engine.look.value, 480, 170, settings)))
 
         // The list of files is only rebuilt when it changes, or a Delete button would move under a finger.

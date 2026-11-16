@@ -25,6 +25,11 @@ class Path(
     /** The name of the road the prediction starts on, and what kind of way it is. */
     val roadName: String?,
     val roadKind: String = "",
+    /**
+     * How far along each junction is that the prediction went through on a guess, nearest first.
+     * Up to the first of these the road is known; past it, it is the likeliest way on.
+     */
+    val guessesM: List<Double> = emptyList(),
 ) {
     val lengthM: Double get() = points.last().distM
 
@@ -54,6 +59,10 @@ class Path(
  * the same name, otherwise the one that runs straightest, otherwise the only way onward. With none
  * of those it stops, because you have to turn. A roundabout takes the exit that carries on the
  * way you came in.
+ *
+ * Asked to go `through`, it doesn't stop at a T-junction or a fork. It takes the likeliest way on
+ * (the piece with the same name, otherwise the smallest turn) and notes where it guessed, so the
+ * picture always reaches the distance asked for.
  */
 class RoadFollow(private val source: RoadSource, private val rules: Rules = Rules()) {
 
@@ -70,18 +79,18 @@ class RoadFollow(private val source: RoadSource, private val rules: Rules = Rule
      */
     private class Joins(val options: List<Option>, val arms: List<Arm>)
 
-    fun follow(start: Spot, maxM: Double): Path {
+    fun follow(start: Spot, maxM: Double, through: Boolean = false): Path {
         val out = ArrayList<PathPoint>()
+        val guesses = ArrayList<Double>()
+        fun done(end: End) = Path(out, end, name(start), start.road.kind, guesses)
         out += PathPoint(start.at, 0.0, false)
-        val name = start.road.label
-        val kind = start.road.kind
         val seen = HashSet<Long>()
         var spot = start
         var dist = 0.0
 
         while (true) {
             if (!seen.add(spot.road.key * 2 + (if (spot.forward) 1 else 0)) || seen.size > rules.maxPieces) {
-                return Path(out, End.LOOP, name, kind)
+                return done(End.LOOP)
             }
             // Ride this piece to its end.
             val flat = spot.road.bridge || spot.road.tunnel
@@ -91,25 +100,26 @@ class RoadFollow(private val source: RoadSource, private val rules: Rules = Rule
                 if (d < 0.01) continue
                 if (dist + d >= maxM) {
                     out += PathPoint(Geo.between(prev, pt, (maxM - dist) / d), maxM, flat)
-                    return Path(out, End.FAR_ENOUGH, name, kind)
+                    return done(End.FAR_ENOUGH)
                 }
                 dist += d
                 out += PathPoint(pt, dist, flat)
                 prev = pt
             }
 
-            val arriving = arrivalBearing(out) ?: spot.bearing(rules.bearingLookM) ?: return Path(out, End.ROAD_ENDS, name, kind)
-            val met = joins(prev, spot.road, arriving) ?: return Path(out, End.NO_MAP, name, kind)
+            val arriving = arrivalBearing(out) ?: spot.bearing(rules.bearingLookM) ?: return done(End.ROAD_ENDS)
+            val met = joins(prev, spot.road, arriving) ?: return done(End.NO_MAP)
             var next = choose(spot.road, met)
-                ?: return Path(out, when {
+                ?: (if (through) guess(spot.road, met)?.also { guesses += dist } else null)
+                ?: return done(when {
                     met.options.any { it.turn <= rules.maxTurn } -> End.TURN
                     // A circuit mapped as one closed piece: a lap is as far as it goes.
                     Geo.metres(spot.road.pts.first(), spot.road.pts.last()) < 0.5 -> End.LOOP
                     else -> End.ROAD_ENDS
-                }, name, kind)
+                })
 
             if (next.road.roundabout) {
-                val ring = roundabout(next.spot, spot.road, arriving) ?: return Path(out, End.TURN, name, kind)
+                val ring = roundabout(next.spot, spot.road, arriving) ?: return done(End.TURN)
                 for (pt in ring.first) {
                     val d = Geo.metres(out.last().pt, pt)
                     if (d < 0.01) continue
@@ -117,9 +127,24 @@ class RoadFollow(private val source: RoadSource, private val rules: Rules = Rule
                     out += PathPoint(pt, dist, false)
                 }
                 next = ring.second
-                if (dist >= maxM) return Path(out, End.FAR_ENOUGH, name, kind)
+                if (dist >= maxM) return done(End.FAR_ENOUGH)
             }
             spot = next.spot
+        }
+    }
+
+    private fun name(start: Spot): String? = start.road.label
+
+    /**
+     * No rule settles it: a T-junction or a fork. The likeliest way on is the piece with the same
+     * name, otherwise the smallest turn, and a road rather than a driveway or path when you're on
+     * a road.
+     */
+    private fun guess(current: Road, met: Joins): Option? {
+        val onward = met.options.filter { it.turn <= rules.maxTurn }
+        val pool = if (current.roadClass == RoadClass.ROAD) onward.filter { it.road.roadClass == RoadClass.ROAD }.ifEmpty { onward } else onward
+        return pool.minByOrNull {
+            it.turn + (if (current.sameRoadAs(it.road)) -1000.0 else 0.0) + (if (it.road.kind != current.kind) 10.0 else 0.0)
         }
     }
 

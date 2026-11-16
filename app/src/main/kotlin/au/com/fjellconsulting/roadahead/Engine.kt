@@ -155,6 +155,7 @@ class Engine(private val app: RoadAheadApp) {
         val t = tracker
         val before = t?.predictions
         val look = if (t == null) Look.NoMap else runCatching {
+            t.through = app.prefs.through
             t.update(fix.pt, fix.orientation, app.prefs.wantKm * 1000.0)
         }.getOrElse {
             Log.w(TAG, "the prediction failed", it)
@@ -179,7 +180,8 @@ class Engine(private val app: RoadAheadApp) {
                 End.NO_MAP -> "then the map ends"
                 End.NO_HEIGHTS -> "then the elevation files end"
             }
-            "%s, %.0f m of %.0f m shown, %.0f m of climbing, %s".format(it.roadName ?: "a road with no name", it.lengthM, it.wantM, it.climbM, stop)
+            val guess = it.guessFromM?.let { g -> ", a guess past the junction in %.0f m".format(g) } ?: ""
+            "%s, %.0f m of %.0f m shown, %.0f m of climbing, %s%s".format(it.roadName ?: "a road with no name", it.lengthM, it.wantM, it.climbM, stop, guess)
         }
         Look.Waiting -> "waiting for you to move"
         Look.NoRoad -> "no mapped road nearby"

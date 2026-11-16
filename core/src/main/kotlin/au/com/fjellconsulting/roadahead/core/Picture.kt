@@ -22,12 +22,21 @@ enum class Palette(val label: String, private val bands: List<Pair<Double, Int>>
     }
 }
 
+/** When the field carries its words and numbers. Without them it is the graph alone. */
+enum class Labels(val label: String) {
+    ALWAYS("Always"),
+    /** A tile at least three quarters of the page wide. A half-width tile is all graph. */
+    BIG_TILES("Only on big tiles"),
+    NEVER("Never"),
+}
+
 /** What a rider can change about the field, from the app's settings screen. */
 data class FieldSettings(
     val palette: Palette = Palette.KAROO,
     val showClimb: Boolean = true,
     val showSteepest: Boolean = true,
     val imperial: Boolean = false,
+    val labels: Labels = Labels.BIG_TILES,
 )
 
 // The picture is a list of plain shapes, so the Karoo and the Mac draw exactly the same thing.
@@ -91,14 +100,19 @@ object FieldPainter {
         val tall = h >= 220
         val tiny = h < 110
         val narrow = w < 360
+        val words = when (s.labels) {
+            Labels.ALWAYS -> true
+            Labels.BIG_TILES -> !narrow
+            Labels.NEVER -> false
+        }
 
         // The words and numbers along the top.
         val small = if (tall) 15f else 13f
         val big = when { tall -> 34f; tiny -> 22f; else -> 26f }
         val labelY = if (tall) 20f else 17f
         val numberY = when { tall -> 54f; tiny -> 24f; else -> 40f }
-        val top = when { tall -> 66f; tiny -> 30f; else -> 46f }
-        if (!tiny) {
+        val top = when { !words -> if (tiny) 4f else 8f; tall -> 66f; tiny -> 30f; else -> 46f }
+        if (words && !tiny) {
             shapes += Label(listOf(Run("ROAD AHEAD", small, GREY)), 10f, labelY, Align.LEFT)
             val name = a.roadName
             if (name != null && !narrow) {
@@ -109,23 +123,27 @@ object FieldPainter {
         fun number(value: Pair<String, String>, x: Float, align: Align) {
             shapes += Label(listOf(Run(value.first, big, WHITE), Run(" " + value.second, big * 0.55f, GREY)), x, numberY, align)
         }
-        number(Units.distance(a.wantM, s.imperial), 10f, Align.LEFT)
+        if (words) number(Units.distance(a.wantM, s.imperial), 10f, Align.LEFT)
         val steepest = a.steepestPct(a.wantM / 20.0)?.let { max(0.0, it) }
-        val showSteepest = s.showSteepest && steepest != null
-        if (s.showClimb) {
+        val showSteepest = words && s.showSteepest && steepest != null
+        if (words && s.showClimb) {
             val lone = narrow || !showSteepest
             number(Units.climb(a.climbM, s.imperial), if (lone) w - 10f else w / 2f, if (lone) Align.RIGHT else Align.CENTRE)
         }
         if (showSteepest && !(narrow && s.showClimb)) number("%.0f".format(steepest) to "% max", w - 10f, Align.RIGHT)
 
-        // The profile. The scale never zooms in past a minimum, so a flat road looks flat.
+        // The profile. The scale never zooms in past a minimum, so a flat road looks flat, and
+        // what is in view sits in the middle of the tile: a flat road runs through the middle, a
+        // climb starts low and a descent starts high.
         val base = h - (if (tiny) 3f else 8f)
         val plotH = base - top
         val lo0 = a.heights.min()
         val hi0 = a.heights.max()
         val span = max(hi0 - lo0, max(40.0, a.wantM * 0.02))
-        val lo = lo0 - span * 0.12
-        val hi = lo + span * 1.2
+        val middle = (lo0 + hi0) / 2
+        val lo = middle - span * 0.6
+        val hi = middle + span * 0.6
+        val guess = a.guessFromM
         fun x(distM: Double) = (distM / a.wantM * w).toFloat()
         fun y(height: Double) = (top + plotH - (height - lo) / (hi - lo) * plotH).toFloat()
 
@@ -142,10 +160,20 @@ object FieldPainter {
             // A hair of overlap, so no black line shows between two blocks.
             xs += x(b.toM) + 0.6f; ys += y(a.heightAt(b.toM))
             xs += x(b.toM) + 0.6f; ys += base
-            shapes += Fill(xs.toFloatArray(), ys.toFloatArray(), s.palette.colour(b.gradePct))
+            // Past a junction taken on a guess, the blocks are dimmed: likely, not known.
+            val colour = s.palette.colour(b.gradePct)
+            shapes += Fill(xs.toFloatArray(), ys.toFloatArray(), if (guess != null && (b.fromM + b.toM) / 2 >= guess) dim(colour) else colour)
         }
         val n = a.heights.size
-        shapes += Stroke(FloatArray(n) { x(a.distAt(it)) }, FloatArray(n) { y(a.heights[it]) }, 0x8CFFFFFF.toInt(), 1.5f)
+        val lineW = if (tall) 4f else 3f
+        shapes += Stroke(FloatArray(n) { x(a.distAt(it)) }, FloatArray(n) { y(a.heights[it]) }, 0xF2FFFFFF.toInt(), lineW)
+        if (guess != null) {
+            // A tick across the line where the guessing starts.
+            val gx = x(guess)
+            val gy = y(a.heightAt(guess))
+            val tick = max(8f, plotH * 0.12f)
+            shapes += Stroke(floatArrayOf(gx, gx), floatArrayOf(gy - tick, gy + tick), WHITE, lineW)
+        }
 
         // Where the picture stops short of the distance asked for, say why.
         val reason = when (a.end) {
@@ -160,6 +188,7 @@ object FieldPainter {
             shapes += Stroke(floatArrayOf(ex, ex), floatArrayOf(top, base), WHITE, 2f, dashed = true)
             val (num, unit) = Units.distance(a.lengthM, s.imperial)
             val text = when {
+                !words -> null
                 a.end == End.NO_MAP || a.end == End.NO_HEIGHTS -> reason
                 narrow -> "$num $unit"
                 else -> "$reason in $num $unit"
@@ -174,13 +203,19 @@ object FieldPainter {
                 val arm = if (tall) 13f else 10f
                 shapes += Stroke(floatArrayOf(gx, gx), floatArrayOf(gy + arm * 1.4f, gy - arm * 0.4f), WHITE, 4f)
                 shapes += Stroke(floatArrayOf(gx - arm, gx + arm), floatArrayOf(gy - arm * 0.4f, gy - arm * 0.4f), WHITE, 4f)
-                shapes += Label(listOf(Run(text, size, SOFT, bold = false)), if (leftSide) gx - arm - 10f else gx + arm + 10f, ty, if (leftSide) Align.RIGHT else Align.LEFT)
-            } else {
+                if (text != null) shapes += Label(listOf(Run(text, size, SOFT, bold = false)), if (leftSide) gx - arm - 10f else gx + arm + 10f, ty, if (leftSide) Align.RIGHT else Align.LEFT)
+            } else if (text != null) {
                 shapes += Label(listOf(Run(text, size, SOFT, bold = false)), if (leftSide) ex - 10f else ex + 10f, ty, if (leftSide) Align.RIGHT else Align.LEFT)
             }
         }
         // You are here.
         shapes += Dot(5f, y(a.heights[0]), if (tiny) 4f else 5f, WHITE)
         return Picture(w, h, shapes)
+    }
+
+    /** The same colour at half strength, over the field's black. */
+    internal fun dim(argb: Int): Int {
+        fun part(shift: Int) = (((argb shr shift) and 0xFF) * 0.5).toInt() shl shift
+        return (0xFF shl 24) or part(16) or part(8) or part(0)
     }
 }

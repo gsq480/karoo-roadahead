@@ -30,7 +30,11 @@ internal fun heightAlong(heights: DoubleArray, stepM: Double, lengthM: Double, d
 }
 
 /** The heights along a predicted road: one every `stepM` from its start, and one at its end. */
-class Profile(val stepM: Double, val heights: DoubleArray, val lengthM: Double, val end: End, val roadName: String?) {
+class Profile(
+    val stepM: Double, val heights: DoubleArray, val lengthM: Double, val end: End, val roadName: String?,
+    /** Where the road was followed through a junction on a guess. See [Path.guessesM]. */
+    val guessesM: List<Double> = emptyList(),
+) {
     fun heightAt(distM: Double): Double = heightAlong(heights, stepM, lengthM, distM)
 }
 
@@ -67,7 +71,7 @@ class ProfileBuilder(private val heights: HeightSource, private val rules: Rules
         val filled = bridge(raw.copyOf(n)) ?: return null
         var out = filled
         repeat(2) { out = smooth(out, rules.smoothSamples) }
-        return Profile(step, out, lengthM, end, path.roadName)
+        return Profile(step, out, lengthM, end, path.roadName, path.guessesM.filter { it < lengthM })
     }
 
     private companion object {
@@ -138,6 +142,11 @@ class Ahead(
     val wantM: Double,
     val end: End,
     val roadName: String?,
+    /**
+     * How far ahead the first junction is that the prediction went through on a guess. Up to here
+     * the road is known; past it, it is the likeliest way on. Null when nothing in view is a guess.
+     */
+    val guessFromM: Double? = null,
 ) {
     /** How far along the road each height is. */
     fun distAt(i: Int): Double = if (i == heights.size - 1) lengthM else i * stepM

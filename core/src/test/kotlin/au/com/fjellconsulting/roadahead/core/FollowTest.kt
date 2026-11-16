@@ -49,6 +49,51 @@ class FollowTest {
         assertEquals(End.TURN, path.end)
     }
 
+    private fun through(vararg roads: Road, maxM: Double = 5000.0): Path =
+        RoadFollow(RoadList(roads.toList())).follow(Spot(roads[0], 0, 0.0, true), maxM, through = true)
+
+    @Test fun askedToCarryOnItGoesThroughATJunctionAndNotesTheGuess() {
+        // Cross runs 200 m each way from the junction. Nothing says which way, so it is a guess.
+        val path = through(main, cross())
+        assertEquals(500.0, path.lengthM, 1.0)
+        assertEquals(1, path.guessesM.size)
+        assertEquals(300.0, path.guessesM[0], 1.0)
+        assertEquals(End.ROAD_ENDS, path.end)
+    }
+
+    @Test fun atAForkItTakesTheSmallerTurn() {
+        // Two unnamed-to-us roads leave the end of Main: one bears 40 degrees left, one 70 right.
+        val gentle = Road(line(x, 50.0, 400.0), name = "Gentle")
+        val sharp = Road(line(x, 160.0, 400.0), name = "Sharp")
+        assertEquals(End.TURN, follow(main, gentle, sharp).end)
+        val path = through(main, gentle, sharp)
+        assertEndsNear(path, Geo.offset(x, 50.0, 400.0))
+        assertEquals(listOf(300.0), path.guessesM.map { Math.round(it).toDouble() })
+    }
+
+    @Test fun atATWhereTheNameGoesBothWaysItStillCarriesOn() {
+        val both = Road(listOf(Geo.offset(x, 0.0, 200.0), x, Geo.offset(x, 180.0, 200.0)), name = "Main")
+        assertEquals(End.TURN, follow(main, both).end)
+        val path = through(main, both)
+        assertEquals(500.0, path.lengthM, 1.0)
+        assertEquals(1, path.guessesM.size)
+    }
+
+    @Test fun aRoadItCanFollowByRuleIsNotAGuess() {
+        val path = through(main, Road(line(x, 90.0, 500.0), name = "Main"), cross())
+        assertEquals(800.0, path.lengthM, 1.0)
+        assertTrue(path.guessesM.isEmpty())
+    }
+
+    @Test fun carryingOnNeverTurnsBackOrDownADriveway() {
+        // Only a driveway leaves the end of the road, and a road doubles back at 150 degrees.
+        val drive = Road(line(x, 90.0, 60.0), name = null, kind = "service")
+        assertEquals(300.0, through(main, Road(line(x, 250.0, 300.0), name = "Back")).lengthM, 1.0)
+        // With a real road to guess at, the driveway straight ahead is not taken.
+        val path = through(main, drive, cross())
+        assertEquals(500.0, path.lengthM, 1.0)
+    }
+
     @Test fun stopsAtTheDistanceAskedFor() {
         val path = follow(main, Road(line(x, 90.0, 500.0), name = "Main"), maxM = 450.0)
         assertEquals(450.0, path.lengthM, 0.01)
