@@ -123,13 +123,16 @@ class ProfileTest {
         assertEquals(20, fills.size)
         // 5% all the way is the Karoo's yellow.
         assertTrue(fills.all { it.argb == 0xFFF0D800.toInt() })
-        assertEquals(listOf("ROAD AHEAD", "Main", "2.0 km", "+100 m", "5 % max"), texts(p))
+        // Large text on a tile of ordinary height: the numbers alone, no caption or road name.
+        assertEquals(listOf("2.0 km", "+100 m", "5 % max"), texts(p))
+        assertEquals(listOf("ROAD AHEAD", "Main", "2.0 km", "+100 m", "5 % max"),
+            texts(FieldPainter.paint(Look.Road(ahead(2000.0, End.FAR_ENOUGH)), 480, 150, FieldSettings(textSize = TextSize.SMALL))))
         // Nothing is drawn outside the field.
         for (f in fills) assertTrue(f.ys.all { it >= 0f && it <= 150f } && f.xs.all { it >= 0f && it <= 481f })
     }
 
     @Test fun marksAJunctionAndSaysHowFar() {
-        val p = FieldPainter.paint(Look.Road(ahead(1100.0, End.TURN)), 480, 150, FieldSettings())
+        val p = FieldPainter.paint(Look.Road(ahead(1100.0, End.TURN)), 480, 150, FieldSettings(textSize = TextSize.SMALL))
         assertTrue(texts(p).contains("junction in 1.1 km"))
         assertTrue(p.shapes.filterIsInstance<Stroke>().any { it.dashed })
         assertEquals(11, p.shapes.filterIsInstance<Fill>().size)
@@ -137,7 +140,9 @@ class ProfileTest {
 
     @Test fun dropsWhatDoesNotFitANarrowOrShortField() {
         val narrow = texts(FieldPainter.paint(Look.Road(ahead(2000.0, End.FAR_ENOUGH)), 240, 150, FieldSettings(labels = Labels.ALWAYS)))
-        assertEquals(listOf("ROAD AHEAD", "2.0 km", "+100 m"), narrow)
+        assertEquals(listOf("2.0 km", "+100 m"), narrow)
+        val narrowSmall = texts(FieldPainter.paint(Look.Road(ahead(2000.0, End.FAR_ENOUGH)), 240, 150, FieldSettings(labels = Labels.ALWAYS, textSize = TextSize.SMALL)))
+        assertEquals(listOf("ROAD AHEAD", "2.0 km", "+100 m"), narrowSmall)
         val short = texts(FieldPainter.paint(Look.Road(ahead(2000.0, End.FAR_ENOUGH)), 480, 90, FieldSettings()))
         assertEquals(listOf("2.0 km", "+100 m", "5 % max"), short)
     }
@@ -146,10 +151,45 @@ class ProfileTest {
         val look = Look.Road(ahead(2000.0, End.FAR_ENOUGH))
         assertEquals(emptyList<String>(), texts(FieldPainter.paint(look, 240, 150, FieldSettings())))
         assertEquals(emptyList<String>(), texts(FieldPainter.paint(look, 480, 150, FieldSettings(labels = Labels.NEVER))))
-        assertEquals(5, texts(FieldPainter.paint(look, 480, 150, FieldSettings())).size)
+        assertEquals(3, texts(FieldPainter.paint(look, 480, 150, FieldSettings())).size)
         // With no words the graph takes the room they left.
         fun top(p: Picture) = p.shapes.filterIsInstance<Fill>().minOf { f -> f.ys.min() }
         assertTrue(top(FieldPainter.paint(look, 240, 150, FieldSettings())) < top(FieldPainter.paint(look, 240, 150, FieldSettings(labels = Labels.ALWAYS))) - 20f)
+    }
+
+    private fun sizes(p: Picture) = p.shapes.filterIsInstance<Label>().map { l -> l.runs.map { it.size } }
+
+    @Test fun largeTextIsBigEnoughToReadAndSmallIsAsItWas() {
+        val look = Look.Road(ahead(2000.0, End.FAR_ENOUGH))
+        // Ordinary tile: 40 px numbers with 24 px units, where Small has 26 and 14.3.
+        assertEquals(listOf(40f, 24f), sizes(FieldPainter.paint(look, 480, 150, FieldSettings()))[0])
+        val small = sizes(FieldPainter.paint(look, 480, 150, FieldSettings(textSize = TextSize.SMALL)))
+        assertEquals(listOf(13f), small[0])
+        assertEquals(26f, small[2][0])
+        // A tall tile keeps the caption and the road name, at 22 px, over 44 px numbers.
+        val tall = FieldPainter.paint(look, 480, 300, FieldSettings())
+        assertEquals(listOf("ROAD AHEAD", "Main", "2.0 km", "+100 m", "5 % max"), texts(tall))
+        assertEquals(listOf(22f), sizes(tall)[0])
+        assertEquals(44f, sizes(tall)[2][0])
+        // Large numbers take no more height from the graph than Small's two rows did.
+        fun top(p: Picture) = p.shapes.filterIsInstance<Fill>().minOf { f -> f.ys.min() }
+        assertTrue(top(FieldPainter.paint(look, 480, 150, FieldSettings())) <= top(FieldPainter.paint(look, 480, 150, FieldSettings(textSize = TextSize.SMALL))) + 4f)
+        // The numbers sit above the graph, never on it.
+        val numberY = FieldPainter.paint(look, 480, 150, FieldSettings()).shapes.filterIsInstance<Label>()[0].y
+        assertTrue(numberY < top(FieldPainter.paint(look, 480, 150, FieldSettings())))
+    }
+
+    @Test fun aJunctionNoteShrinksToTheDistanceWhenTheSentenceWouldNotFit() {
+        // Half way across there is no room either side for the sentence at the Large size.
+        val mid = texts(FieldPainter.paint(Look.Road(ahead(1100.0, End.TURN)), 480, 150, FieldSettings()))
+        assertTrue(mid.toString(), mid.contains("1.1 km") && !mid.contains("junction in 1.1 km"))
+        // Far across, the sentence fits to the left of the mark.
+        val far = texts(FieldPainter.paint(Look.Road(ahead(1600.0, End.TURN)), 480, 150, FieldSettings()))
+        assertTrue(far.toString(), far.contains("junction in 1.6 km"))
+        // There the words lie over the graph, so a dark panel goes behind them. To the right of the end there is none.
+        fun panels(p: Picture) = p.shapes.filterIsInstance<Label>().count { it.panel != null }
+        assertEquals(1, panels(FieldPainter.paint(Look.Road(ahead(1600.0, End.TURN)), 480, 150, FieldSettings())))
+        assertEquals(0, panels(FieldPainter.paint(Look.Road(ahead(600.0, End.TURN)), 480, 150, FieldSettings())))
     }
 
     @Test fun aJunctionWithNoWordsKeepsItsMarkAndDropsTheText() {
@@ -197,7 +237,7 @@ class ProfileTest {
     @Test fun followsTheRidersSettings() {
         val look = Look.Road(ahead(2000.0, End.FAR_ENOUGH))
         val plain = texts(FieldPainter.paint(look, 480, 150, FieldSettings(showClimb = false, showSteepest = false)))
-        assertEquals(listOf("ROAD AHEAD", "Main", "2.0 km"), plain)
+        assertEquals(listOf("2.0 km"), plain)
         val miles = texts(FieldPainter.paint(look, 480, 150, FieldSettings(imperial = true)))
         assertTrue(miles.contains("1.2 mi") && miles.contains("+328 ft"))
         val wahoo = FieldPainter.paint(look, 480, 150, FieldSettings(palette = Palette.WAHOO))
@@ -212,6 +252,8 @@ class ProfileTest {
 
     @Test fun saysWhyItCannotDraw() {
         assertEquals(listOf("ROAD AHEAD", "Start riding", "to see the road ahead"), texts(FieldPainter.paint(Look.Waiting, 480, 150, FieldSettings())))
+        assertEquals(22f, FieldPainter.paint(Look.Waiting, 480, 150, FieldSettings()).shapes.filterIsInstance<Label>().last().runs[0].size)
+        assertEquals(17f, FieldPainter.paint(Look.Waiting, 480, 150, FieldSettings(textSize = TextSize.SMALL)).shapes.filterIsInstance<Label>().last().runs[0].size)
         assertEquals(listOf("No elevation here"), texts(FieldPainter.paint(Look.NoHeights("S36E149.hgt"), 480, 80, FieldSettings())))
     }
 

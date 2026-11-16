@@ -30,6 +30,12 @@ enum class Labels(val label: String) {
     NEVER("Never"),
 }
 
+/** How big the words and numbers are. Large reads at a glance on the bike; Small is the size up to 0.2.0. */
+enum class TextSize(val label: String) {
+    LARGE("Large"),
+    SMALL("Small"),
+}
+
 /** What a rider can change about the field, from the app's settings screen. */
 data class FieldSettings(
     val palette: Palette = Palette.KAROO,
@@ -37,6 +43,7 @@ data class FieldSettings(
     val showSteepest: Boolean = true,
     val imperial: Boolean = false,
     val labels: Labels = Labels.BIG_TILES,
+    val textSize: TextSize = TextSize.LARGE,
 )
 
 // The picture is a list of plain shapes, so the Karoo and the Mac draw exactly the same thing.
@@ -48,8 +55,12 @@ class Dot(val x: Float, val y: Float, val r: Float, val argb: Int) : Shape
 class Run(val text: String, val size: Float, val argb: Int, val bold: Boolean = true)
 enum class Align { LEFT, CENTRE, RIGHT }
 
-/** A line of text made of runs in different sizes and colours, such as a number and its unit. */
-class Label(val runs: List<Run>, val x: Float, val y: Float, val align: Align) : Shape
+/**
+ * A line of text made of runs in different sizes and colours, such as a number and its unit.
+ * With a [panel] colour, whatever draws it puts a box of that colour behind the words, sized to
+ * the words as that screen's own font sets them.
+ */
+class Label(val runs: List<Run>, val x: Float, val y: Float, val align: Align, val panel: Int? = null) : Shape
 
 class Picture(val w: Int, val h: Int, val shapes: List<Shape>)
 
@@ -75,23 +86,30 @@ object FieldPainter {
     private const val WHITE = 0xFFFFFFFF.toInt()
     private const val GREY = 0xFF9AA5A0.toInt()
     private const val SOFT = 0xFFB9C2BD.toInt()
+    private const val PANEL = 0xB8000000.toInt()
 
     fun paint(look: Look, w: Int, h: Int, settings: FieldSettings): Picture = when (look) {
         is Look.Road -> road(look.ahead, w, h, settings)
-        Look.Waiting -> message(w, h, "Start riding", "to see the road ahead")
-        Look.NoRoad -> message(w, h, "No road here", "nothing mapped nearby")
-        Look.NoMap -> message(w, h, "No map here", "download this region's map")
-        is Look.NoHeights -> message(w, h, "No elevation here", "connect to Wi-Fi to fetch it")
+        Look.Waiting -> message(w, h, "Start riding", "to see the road ahead", settings.textSize)
+        Look.NoRoad -> message(w, h, "No road here", "nothing mapped nearby", settings.textSize)
+        Look.NoMap -> message(w, h, "No map here", "download this region's map", settings.textSize)
+        is Look.NoHeights -> message(w, h, "No elevation here", "connect to Wi-Fi to fetch it", settings.textSize)
     }
 
     /** A field with words in place of a picture. */
-    fun message(w: Int, h: Int, big: String, small: String): Picture {
+    fun message(w: Int, h: Int, big: String, small: String, textSize: TextSize = TextSize.LARGE): Picture {
         val shapes = ArrayList<Shape>()
         val scale = min(1f, w / 480f)
-        if (h >= 110) shapes += Label(listOf(Run("ROAD AHEAD", 13f, GREY)), 10f, 17f, Align.LEFT)
+        val large = textSize == TextSize.LARGE
+        // The Large caption needs a taller tile, or it crowds the words under it.
+        if (h >= (if (large) 130 else 110)) shapes += Label(listOf(Run("ROAD AHEAD", if (large) 20f else 13f, GREY)), 10f, if (large) 24f else 17f, Align.LEFT)
         val mid = h / 2f
-        shapes += Label(listOf(Run(big, 30f * scale, WHITE)), w / 2f, mid + (if (h < 90) 2f else 6f), Align.CENTRE)
-        if (h >= 90) shapes += Label(listOf(Run(small, 17f * scale, GREY, bold = false)), w / 2f, mid + 32f, Align.CENTRE)
+        val bigSize = (if (large) 36f else 30f) * scale
+        val smallSize = (if (large) 22f else 17f) * scale
+        // A short tile has no caption above the words, so Large sits a little higher there.
+        val drop = if (large && h >= 130) 6f else 0f
+        shapes += Label(listOf(Run(big, bigSize, WHITE)), w / 2f, mid + (if (h < 90) 2f else 6f) + drop, Align.CENTRE)
+        if (h >= 90) shapes += Label(listOf(Run(small, smallSize, GREY, bold = false)), w / 2f, mid + (if (large) 36f else 32f) + drop, Align.CENTRE)
         return Picture(w, h, shapes)
     }
 
@@ -106,13 +124,34 @@ object FieldPainter {
             Labels.NEVER -> false
         }
 
-        // The words and numbers along the top.
-        val small = if (tall) 15f else 13f
-        val big = when { tall -> 34f; tiny -> 22f; else -> 26f }
-        val labelY = if (tall) 20f else 17f
-        val numberY = when { tall -> 54f; tiny -> 24f; else -> 40f }
-        val top = when { !words -> if (tiny) 4f else 8f; tall -> 66f; tiny -> 30f; else -> 46f }
-        if (words && !tiny) {
+        // The words and numbers along the top. Large text is sized to read at a glance on the
+        // bike. On a tile of ordinary height it drops the caption and the road name, so the
+        // numbers can grow without taking height from the graph.
+        val large = s.textSize == TextSize.LARGE
+        val caption = words && !tiny && (tall || !large)
+        val small = when { !large -> if (tall) 15f else 13f; else -> 22f }
+        val big = when {
+            !large -> when { tall -> 34f; tiny -> 22f; else -> 26f }
+            narrow -> if (tiny) 26f else 32f
+            tall -> 44f
+            tiny -> 30f
+            else -> 40f
+        }
+        val unitScale = if (large) 0.6f else 0.55f
+        val labelY = when { !large -> if (tall) 20f else 17f; else -> 26f }
+        val numberY = when {
+            !large -> when { tall -> 54f; tiny -> 24f; else -> 40f }
+            tall -> 74f
+            tiny -> big + 2f
+            else -> big
+        }
+        val top = when {
+            !words -> if (tiny) 4f else 8f
+            !large -> when { tall -> 66f; tiny -> 30f; else -> 46f }
+            tall -> 86f
+            else -> numberY + 9f
+        }
+        if (caption) {
             shapes += Label(listOf(Run("ROAD AHEAD", small, GREY)), 10f, labelY, Align.LEFT)
             val name = a.roadName
             if (name != null && !narrow) {
@@ -121,7 +160,7 @@ object FieldPainter {
             }
         }
         fun number(value: Pair<String, String>, x: Float, align: Align) {
-            shapes += Label(listOf(Run(value.first, big, WHITE), Run(" " + value.second, big * 0.55f, GREY)), x, numberY, align)
+            shapes += Label(listOf(Run(value.first, big, WHITE), Run(" " + value.second, big * unitScale, GREY)), x, numberY, align)
         }
         if (words) number(Units.distance(a.wantM, s.imperial), 10f, Align.LEFT)
         val steepest = a.steepestPct(a.wantM / 20.0)?.let { max(0.0, it) }
@@ -187,25 +226,36 @@ object FieldPainter {
             val ex = x(a.lengthM)
             shapes += Stroke(floatArrayOf(ex, ex), floatArrayOf(top, base), WHITE, 2f, dashed = true)
             val (num, unit) = Units.distance(a.lengthM, s.imperial)
+            val size = when { !large -> if (tall) 20f else if (tiny) 14f else 17f; tall -> 28f; tiny -> 20f; else -> 24f }
+            val ty = top + plotH / 2f + size * 0.4f
+            val leftSide = ex > w * 0.55f
+            val mark = a.end == End.TURN && !tiny
+            val arm = if (tall) 13f else 10f
+            // The room beside the mark for the words. The full sentence goes in when it fits,
+            // the distance alone when it doesn't. A letter is about half as wide as it is tall.
+            val room = (if (leftSide) ex else w - ex) - (if (mark) 22f + arm + 10f else 10f) - 4f
+            val full = "$reason in $num $unit"
             val text = when {
                 !words -> null
                 a.end == End.NO_MAP || a.end == End.NO_HEIGHTS -> reason
-                narrow -> "$num $unit"
-                else -> "$reason in $num $unit"
+                narrow || full.length * size * 0.52f > room -> "$num $unit"
+                else -> full
             }
-            val size = if (tall) 20f else if (tiny) 14f else 17f
-            val ty = top + plotH / 2f + size * 0.4f
-            val leftSide = ex > w * 0.55f
-            if (a.end == End.TURN && !tiny) {
+            // To the left of the end the words lie over the graph, so they get a dark panel to
+            // be read against. To the right there is only the field's black.
+            fun note(words: String, x: Float) {
+                shapes += Label(listOf(Run(words, size, if (leftSide) WHITE else SOFT, bold = false)), x, ty,
+                    if (leftSide) Align.RIGHT else Align.LEFT, panel = if (leftSide) PANEL else null)
+            }
+            if (mark) {
                 // A small T: the road you're on meeting the one that crosses it.
                 val gx = if (leftSide) ex - 22f else ex + 22f
                 val gy = top + plotH / 2f
-                val arm = if (tall) 13f else 10f
                 shapes += Stroke(floatArrayOf(gx, gx), floatArrayOf(gy + arm * 1.4f, gy - arm * 0.4f), WHITE, 4f)
                 shapes += Stroke(floatArrayOf(gx - arm, gx + arm), floatArrayOf(gy - arm * 0.4f, gy - arm * 0.4f), WHITE, 4f)
-                if (text != null) shapes += Label(listOf(Run(text, size, SOFT, bold = false)), if (leftSide) gx - arm - 10f else gx + arm + 10f, ty, if (leftSide) Align.RIGHT else Align.LEFT)
+                if (text != null) note(text, if (leftSide) gx - arm - 10f else gx + arm + 10f)
             } else if (text != null) {
-                shapes += Label(listOf(Run(text, size, SOFT, bold = false)), if (leftSide) ex - 10f else ex + 10f, ty, if (leftSide) Align.RIGHT else Align.LEFT)
+                note(text, if (leftSide) ex - 10f else ex + 10f)
             }
         }
         // You are here.

@@ -40,8 +40,8 @@ class RoadAheadField(extension: String) : DataTypeImpl(extension, TYPE_ID) {
         val job = app.scope.launch {
             app.engine.look.collect { look ->
                 val picture = when {
-                    !app.engine.mapsAllowed -> FieldPainter.message(w, h, "Open Road Ahead", "to let it read the maps")
-                    look == Look.NoMap && app.engine.mapFiles.isEmpty() -> FieldPainter.message(w, h, "No maps found", "download a region on the Karoo")
+                    !app.engine.mapsAllowed -> FieldPainter.message(w, h, "Open Road Ahead", "to let it read the maps", app.prefs.textSize)
+                    look == Look.NoMap && app.engine.mapFiles.isEmpty() -> FieldPainter.message(w, h, "No maps found", "download a region on the Karoo", app.prefs.textSize)
                     else -> FieldPainter.paint(look, w, h, settings(app))
                 }
                 val bitmap = withContext(Dispatchers.Default) { Draw.bitmap(picture) }
@@ -58,7 +58,7 @@ class RoadAheadField(extension: String) : DataTypeImpl(extension, TYPE_ID) {
     }
 
     private fun settings(app: RoadAheadApp) =
-        FieldSettings(app.prefs.palette, app.prefs.showClimb, app.prefs.showSteepest, app.engine.imperial, app.prefs.labels)
+        FieldSettings(app.prefs.palette, app.prefs.showClimb, app.prefs.showSteepest, app.engine.imperial, app.prefs.labels, app.prefs.textSize)
 
     private fun views(context: Context, picture: Picture) =
         RemoteViews(context.packageName, R.layout.field_road).apply { setImageViewBitmap(R.id.road_image, Draw.bitmap(picture)) }

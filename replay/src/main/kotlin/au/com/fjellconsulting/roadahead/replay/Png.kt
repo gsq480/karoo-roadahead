@@ -62,6 +62,11 @@ fun writePng(pictures: List<Picture>, file: File) {
                     Align.CENTRE -> s.x - width / 2f
                     Align.RIGHT -> s.x - width
                 }
+                s.panel?.let { colour ->
+                    val tall = s.runs.maxOf { it.size }
+                    c.color = Color(colour, true)
+                    c.fill(java.awt.geom.Rectangle2D.Float(x - 6f, s.y - tall, width + 12f, tall * 1.35f))
+                }
                 for (run in s.runs) {
                     c.font = font(run.bold, run.size)
                     c.color = Color(run.argb, true)

@@ -7,7 +7,7 @@ account.
 
 ![The Road ahead field at four sizes, and what it shows before you move or with no elevation file](docs/field.png)
 
-This is version 0.2.0, a beta. It has been tested on a Karoo 3 at the desk and against recorded
+This is version 0.2.1, a beta. It has been tested on a Karoo 3 at the desk and against recorded
 rides. It has not been tested on a Karoo 2. If it gets a road wrong, open an issue and say where.
 
 The page for riders, with pictures and a straight install button: https://karoo-roadahead.pages.dev
@@ -60,6 +60,7 @@ The app's screen shows the field as it looks right now, what it has found, and e
 
 - The distances a tap steps through: any of 1, 2, 5, 10 and 20 km.
 - Words and numbers on the field: always, only on full-width tiles, or never.
+- Text size: large or small. Large leaves the road name off a tile of ordinary height, to keep the graph tall.
 - At a junction: carry on along the likeliest road, or stop the picture there.
 - The colours: the Karoo's or Wahoo's.
 - The numbers on the field: climbing ahead, steepest pitch, or neither.

@@ -3,6 +3,7 @@ package au.com.fjellconsulting.roadahead
 import android.content.Context
 import au.com.fjellconsulting.roadahead.core.Labels
 import au.com.fjellconsulting.roadahead.core.Palette
+import au.com.fjellconsulting.roadahead.core.TextSize
 import java.util.concurrent.CopyOnWriteArraySet
 
 /**
@@ -70,6 +71,14 @@ class Prefs(context: Context) {
         get() = runCatching { Labels.valueOf(store.getString("labels", null) ?: "BIG_TILES") }.getOrDefault(Labels.BIG_TILES)
         set(value) {
             store.edit().putString("labels", value.name).apply()
+            changed()
+        }
+
+    /** How big the field's words and numbers are. */
+    var textSize: TextSize
+        get() = runCatching { TextSize.valueOf(store.getString("text_size", null) ?: "LARGE") }.getOrDefault(TextSize.LARGE)
+        set(value) {
+            store.edit().putString("text_size", value.name).apply()
             changed()
         }
 

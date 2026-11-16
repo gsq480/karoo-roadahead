@@ -67,6 +67,12 @@ object Draw {
                     Align.CENTRE -> shape.x - width / 2f
                     Align.RIGHT -> shape.x - width
                 }
+                shape.panel?.let { colour ->
+                    val tall = shape.runs.maxOf { it.size }
+                    paint.style = Paint.Style.FILL
+                    paint.color = colour
+                    canvas.drawRect(x - 6f, shape.y - tall, x + width + 6f, shape.y + tall * 0.35f, paint)
+                }
                 for (run in shape.runs) {
                     paint.typeface = if (run.bold) bold else plain
                     paint.textSize = run.size
