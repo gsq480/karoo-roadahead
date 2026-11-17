@@ -61,6 +61,13 @@ h1 span { display: block; }
 .field span { text-transform: uppercase; font-weight: 500; letter-spacing: 0.02em; }
 .field strong { font-weight: 500; font-size: 1.35em; }
 
+/* A real ride through the field. The clip is 480 px wide, so it stops at eight columns, about the
+   big field's scale, and stays sharp; the line sits at its foot. */
+.replay { margin-top: var(--gap); padding: 0 var(--margin); }
+.replay figure { display: grid; grid-template-columns: 8fr 4fr; column-gap: 28px; align-items: end; }
+.replay video { display: block; width: 100%; height: auto; aspect-ratio: 480 / 150; background: #000; border-radius: 4px; }
+.replay figcaption { margin: 0; max-width: 24ch; font-size: var(--step-body); color: var(--second); }
+
 /* One control, blown up: the field at poster size. It works. */
 .tap { position: relative; margin-top: var(--gap); min-height: 88svh; background: var(--tone); overflow: hidden; padding: clamp(40px, 6vw, 88px) var(--margin); display: grid; grid-template-columns: 5fr 7fr; column-gap: 28px; align-items: start; }
 .tap-words h2 { max-width: 8.5em; }
@@ -163,6 +170,8 @@ figcaption { margin-top: 10px; font-size: var(--step-small); color: var(--soft);
   .lede { margin: 10px 0 0; max-width: none; }
   .facts { text-align: left; justify-self: start; margin: 0; max-width: none; }
   .tap, .proof, .install, .questions, .close { grid-template-columns: 1fr; row-gap: 28px; }
+  .replay figure { grid-template-columns: 1fr; row-gap: 14px; }
+  .replay figcaption { max-width: none; }
   .tap { min-height: 0; padding-bottom: 0; }
   .bigfield { margin: 4svh -8% -2svh 0; }
   .figures div { grid-template-columns: 1fr; row-gap: 10px; }

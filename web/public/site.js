@@ -37,6 +37,18 @@ new IntersectionObserver((entries) => {
   if (entries[0].isIntersecting && !calm.matches) heroTimer = setInterval(() => { heroStep = (heroStep + 1) % DISTANCES.length; showHero(heroStep); }, 3200);
 }, { threshold: 0.4 }).observe($(".stage"));
 
+// The ride replay plays while it is in view, from the climb on its poster. With motion
+// reduced, or with no script, it stays as that still.
+const clip = part("replay");
+let clipStarted = false;
+new IntersectionObserver((entries) => {
+  if (entries[0].isIntersecting && !calm.matches) {
+    if (!clipStarted) { clip.currentTime = 45.75; clipStarted = true; }
+    clip.play().catch(() => {});
+  } else clip.pause();
+}, { threshold: 0.25 }).observe(clip);
+calm.addEventListener("change", () => { if (calm.matches) clip.pause(); });
+
 // The field at poster size: tap it and it does what the real one does.
 let tapStep = 0;
 $(".bigfield").addEventListener("click", () => {
