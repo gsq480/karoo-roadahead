@@ -1,9 +1,13 @@
 package au.com.fjellconsulting.roadahead.replay
 
 import au.com.fjellconsulting.roadahead.core.Ahead
+import au.com.fjellconsulting.roadahead.core.Behind
+import au.com.fjellconsulting.roadahead.core.FieldSettings
+import au.com.fjellconsulting.roadahead.core.FieldPainter
 import au.com.fjellconsulting.roadahead.core.End
 import au.com.fjellconsulting.roadahead.core.Geo
 import au.com.fjellconsulting.roadahead.core.HgtFolder
+import au.com.fjellconsulting.roadahead.core.Labels
 import au.com.fjellconsulting.roadahead.core.Look
 import au.com.fjellconsulting.roadahead.core.Path
 import au.com.fjellconsulting.roadahead.core.Pt
@@ -84,7 +88,7 @@ fun main(args: Array<String>) {
     }
 
     for (i in ride.indices) {
-        val look = tracker.update(ride[i].pt, null, wantM)
+        val look = tracker.update(ride[i].pt, null, wantM, wantM * 0.25)
         looks.merge(look::class.simpleName ?: "?", 1, Int::plus)
         if (tracker.predictions != lastCount) {
             lastCount = tracker.predictions
@@ -101,7 +105,12 @@ fun main(args: Array<String>) {
             val out = File("out/field-$i.png")
             writePng(listOf(paint(look, 480, 150), paint(look, 480, 300), paint(look, 480, 96), paint(look, 240, 150),
                 paint(Look.Waiting, 480, 150), paint(Look.NoHeights("S36E149.hgt"), 480, 96)), out)
-            println("drew fix $i to $out")
+            val options = File("out/field-$i-options.png")
+            writePng(listOf(
+                FieldPainter.paint(look, 480, 128, FieldSettings(showAverage = true, behind = Behind.FIFTH)),
+                FieldPainter.paint(look, 240, 128, FieldSettings(labels = Labels.ALWAYS, showDistance = false, showAverage = true, behind = Behind.FIFTH)),
+                FieldPainter.paint(look, 240, 128, FieldSettings(labels = Labels.ALWAYS))), options)
+            println("drew fix $i to $out and $options")
         }
         if (look !is Look.Road) continue
         val ahead = look.ahead

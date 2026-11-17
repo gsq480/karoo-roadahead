@@ -147,7 +147,18 @@ class Ahead(
      * the road is known; past it, it is the likeliest way on. Null when nothing in view is a guess.
      */
     val guessFromM: Double? = null,
+    /** Heights already ridden, nearest first, one every [stepM]. */
+    val behind: DoubleArray = DoubleArray(0),
 ) {
+    /** The average grade from the rider to the highest point in view; when the road only drops, to the lowest point instead, so it comes out negative. */
+    fun averageToTopPct(): Double {
+        val high = heights.indices.maxByOrNull { heights[it] } ?: return 0.0
+        if (heights[high] >= heights[0] + 2.0 && distAt(high) > 0.0) return (heights[high] - heights[0]) / distAt(high) * 100.0
+        val low = heights.indices.minByOrNull { heights[it] } ?: return 0.0
+        if (heights[low] <= heights[0] - 2.0 && distAt(low) > 0.0) return (heights[low] - heights[0]) / distAt(low) * 100.0
+        return 0.0
+    }
+
     /** How far along the road each height is. */
     fun distAt(i: Int): Double = if (i == heights.size - 1) lengthM else i * stepM
 

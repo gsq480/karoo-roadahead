@@ -44,7 +44,19 @@ data class FieldSettings(
     val imperial: Boolean = false,
     val labels: Labels = Labels.BIG_TILES,
     val textSize: TextSize = TextSize.LARGE,
+    val showDistance: Boolean = true,
+    val showAverage: Boolean = false,
+    val graphHeight: GraphHeight = GraphHeight.FILL,
+    val behind: Behind = Behind.OFF,
 )
+
+enum class GraphHeight(val label: String) { FILL("Fill the tile"), TRUE("True to the slope") }
+
+enum class Behind(val label: String, val share: Double) {
+    OFF("Off", 0.0), FIFTH("A fifth of the field", 0.2), THIRD("A third of the field", 1.0 / 3.0);
+    /** How far back the field shows for [wantM] ahead, at the same scale as the road ahead. */
+    fun behindM(wantM: Double): Double = if (share <= 0.0) 0.0 else wantM * share / (1 - share)
+}
 
 // The picture is a list of plain shapes, so the Karoo and the Mac draw exactly the same thing.
 
@@ -79,14 +91,43 @@ object Units {
 
 /**
  * Rule 4: draw it. The road ahead as a smooth profile, filled in blocks coloured by grade, with
- * the rider at the left edge. Sizes are in the field's own pixels, and the layout tightens as the
- * field gets shorter or narrower.
+ * the rider at the left edge, or a little in from it when the road behind is shown. Sizes are in
+ * the field's own pixels, and the layout tightens as the field gets shorter or narrower.
  */
 object FieldPainter {
     private const val WHITE = 0xFFFFFFFF.toInt()
     private const val GREY = 0xFF9AA5A0.toInt()
     private const val SOFT = 0xFFB9C2BD.toInt()
     private const val PANEL = 0xB8000000.toInt()
+    /** The road already ridden: darker than the grey of a descent ahead. */
+    private const val RIDDEN = 0xFF262B30.toInt()
+    /** The least room between two numbers along the top. */
+    private const val NUMBER_GAP = 8f
+
+    private enum class ReadingKind { DISTANCE, CLIMB, AVERAGE, STEEPEST }
+    private class Reading(val value: Pair<String, String>, val kind: ReadingKind)
+
+    /**
+     * About how wide a bold character is, as a share of the text's size: the wider of the font
+     * the Karoo draws with (Roboto) and the one the Mac draws the website's pictures with
+     * (Helvetica Neue), measured 2026-11-17. Never narrower than the real thing, so numbers
+     * placed by it can't touch.
+     */
+    private fun charWidth(c: Char): Float = when (c) {
+        in '0'..'9' -> 0.58f
+        '+' -> 0.6f
+        '-' -> 0.41f
+        '.' -> 0.29f
+        ' ' -> 0.28f
+        '%' -> 1.0f
+        'm' -> 0.91f
+        'i' -> 0.27f
+        'f', 't' -> 0.36f
+        'g' -> 0.62f
+        else -> 0.58f
+    }
+
+    private fun textWidth(text: String, size: Float): Float = text.sumOf { charWidth(it).toDouble() }.toFloat() * size
 
     fun paint(look: Look, w: Int, h: Int, settings: FieldSettings): Picture = when (look) {
         is Look.Road -> road(look.ahead, w, h, settings)
@@ -139,18 +180,48 @@ object FieldPainter {
         }
         val unitScale = if (large) 0.6f else 0.55f
         val labelY = when { !large -> if (tall) 20f else 17f; else -> 26f }
-        val numberY = when {
+        val numberBase = when {
             !large -> when { tall -> 54f; tiny -> 24f; else -> 40f }
             tall -> 74f
             tiny -> big + 2f
             else -> big
         }
-        val top = when {
+        val topBase = when {
             !words -> if (tiny) 4f else 8f
             !large -> when { tall -> 66f; tiny -> 30f; else -> 46f }
             tall -> 86f
-            else -> numberY + 9f
+            else -> numberBase + 9f
         }
+        // The numbers the rider ticked, always in the same order. If they don't fit across the
+        // tile they shrink, to three quarters of their size at most, and if they still don't fit,
+        // distance drops off first, then climbing. A shrunk row gives its height back to the graph.
+        val steepest = a.steepestPct(a.wantM / 20.0)?.let { max(0.0, it) }
+        val candidates = ArrayList<Reading>()
+        if (words && s.showDistance) candidates += Reading(Units.distance(a.wantM, s.imperial), ReadingKind.DISTANCE)
+        if (words && s.showClimb) candidates += Reading(Units.climb(a.climbM, s.imperial), ReadingKind.CLIMB)
+        if (words && s.showAverage) {
+            val rounded = "%.0f".format(a.averageToTopPct()).let { if (it == "-0") "0" else it }
+            candidates += Reading(rounded to "% avg", ReadingKind.AVERAGE)
+        }
+        if (words && s.showSteepest && steepest != null) candidates += Reading("%.0f".format(steepest) to "% max", ReadingKind.STEEPEST)
+        fun estimated(n: Reading, size: Float) = textWidth(n.value.first, size) + textWidth(" " + n.value.second, size * unitScale)
+        val room = w - 20f
+        fun gaps(ns: List<Reading>) = (ns.size - 1) * NUMBER_GAP
+        fun required(ns: List<Reading>, size: Float) = ns.sumOf { estimated(it, size).toDouble() }.toFloat() + gaps(ns)
+        val numbers = candidates.toMutableList()
+        var numberSize: Float
+        while (true) {
+            if (numbers.size <= 1 || required(numbers, big) <= room + 0.5f) { numberSize = big; break }
+            // The text's width grows with its size, so this size fills the room exactly.
+            val fit = big * (room - gaps(numbers)) / (required(numbers, big) - gaps(numbers))
+            if (fit >= big * 0.75f) { numberSize = fit; break }
+            val drop = numbers.indexOfFirst { it.kind == ReadingKind.DISTANCE }.takeIf { it >= 0 }
+                ?: numbers.indexOfFirst { it.kind == ReadingKind.CLIMB }
+            if (drop < 0) { numberSize = big * 0.75f; break }
+            numbers.removeAt(drop)
+        }
+        val numberY = numberBase + (numberSize - big)
+        val top = if (words) topBase + (numberSize - big) else topBase
         if (caption) {
             shapes += Label(listOf(Run("ROAD AHEAD", small, GREY)), 10f, labelY, Align.LEFT)
             val name = a.roadName
@@ -159,33 +230,70 @@ object FieldPainter {
                 shapes += Label(listOf(Run(short, small, GREY, bold = false)), w - 10f, labelY, Align.RIGHT)
             }
         }
-        fun number(value: Pair<String, String>, x: Float, align: Align) {
-            shapes += Label(listOf(Run(value.first, big, WHITE), Run(" " + value.second, big * unitScale, GREY)), x, numberY, align)
+        if (numbers.isNotEmpty()) {
+            val widths = numbers.map { estimated(it, numberSize) }
+            if (numbers.size == 1) {
+                // One number alone: distance at the left, as it always sat, anything else at the right.
+                val align = if (numbers[0].kind == ReadingKind.DISTANCE) Align.LEFT else Align.RIGHT
+                val x = if (align == Align.LEFT) 10f else w - 10f
+                shapes += Label(listOf(Run(numbers[0].value.first, numberSize, WHITE), Run(" " + numbers[0].value.second, numberSize * unitScale, GREY)), x, numberY, align)
+            } else {
+                // First at the left edge, last at the right, any between spaced evenly.
+                val spare = (room - widths.sum() - gaps(numbers)).coerceAtLeast(0f) / (numbers.size - 1)
+                var x = 10f
+                numbers.forEachIndexed { i, n ->
+                    val align = if (i == numbers.lastIndex) Align.RIGHT else Align.LEFT
+                    val at = if (i == numbers.lastIndex) w - 10f else x
+                    shapes += Label(listOf(Run(n.value.first, numberSize, WHITE), Run(" " + n.value.second, numberSize * unitScale, GREY)), at, numberY, align)
+                    if (i < numbers.lastIndex) x += widths[i] + NUMBER_GAP + spare
+                }
+            }
         }
-        if (words) number(Units.distance(a.wantM, s.imperial), 10f, Align.LEFT)
-        val steepest = a.steepestPct(a.wantM / 20.0)?.let { max(0.0, it) }
-        val showSteepest = words && s.showSteepest && steepest != null
-        if (words && s.showClimb) {
-            val lone = narrow || !showSteepest
-            number(Units.climb(a.climbM, s.imperial), if (lone) w - 10f else w / 2f, if (lone) Align.RIGHT else Align.CENTRE)
-        }
-        if (showSteepest && !(narrow && s.showClimb)) number("%.0f".format(steepest) to "% max", w - 10f, Align.RIGHT)
 
-        // The profile. The scale never zooms in past a minimum, so a flat road looks flat, and
-        // what is in view sits in the middle of the tile: a flat road runs through the middle, a
-        // climb starts low and a descent starts high.
+        // The profile. True to the slope never zooms in past a minimum, so a flat road looks flat.
+        // Fill the tile spreads the profile over the whole graph, with a much lower minimum, so
+        // small rises are easy to see. Either way what is in view sits in the middle of the tile:
+        // a flat road runs through the middle, a climb starts low and a descent starts high. The
+        // road behind, when it is shown, counts towards the scale too.
         val base = h - (if (tiny) 3f else 8f)
         val plotH = base - top
-        val lo0 = a.heights.min()
-        val hi0 = a.heights.max()
-        val span = max(hi0 - lo0, max(40.0, a.wantM * 0.02))
+        val behindOn = s.behind.share > 0.0
+        val x0 = if (behindOn) w * s.behind.share else 0.0
+        val allHeights = if (behindOn) a.heights + a.behind else a.heights
+        val lo0 = allHeights.min()
+        val hi0 = allHeights.max()
+        val range = hi0 - lo0
         val middle = (lo0 + hi0) / 2
-        val lo = middle - span * 0.6
-        val hi = middle + span * 0.6
+        val (lo, hi) = if (s.graphHeight == GraphHeight.TRUE) {
+            val span = max(range, max(40.0, a.wantM * 0.02))
+            (middle - span * 0.6) to (middle + span * 0.6)
+        } else {
+            val floor = max(10.0, a.wantM * 0.0075)
+            if (range >= floor) (lo0 - range * 0.06) to (hi0 + range * 0.06)
+            else (middle - floor * 0.56) to (middle + floor * 0.56)
+        }
         val guess = a.guessFromM
-        fun x(distM: Double) = (distM / a.wantM * w).toFloat()
+        fun x(distM: Double) = (x0 + distM / a.wantM * (w - x0)).toFloat()
         fun y(height: Double) = (top + plotH - (height - lo) / (hi - lo) * plotH).toFloat()
 
+        // The road already ridden, left of the rider, at the same scale as the road ahead: a dark
+        // fill under a thin grey line, so it can't be mistaken for a descent ahead.
+        if (behindOn && a.behind.isNotEmpty()) {
+            val backM = s.behind.behindM(a.wantM)
+            val xs = ArrayList<Float>()
+            val ys = ArrayList<Float>()
+            for (i in a.behind.indices.reversed()) {
+                val dist = (i + 1) * a.stepM
+                if (dist <= backM + 0.01) { xs += (x0 - dist / backM * x0).toFloat(); ys += y(a.behind[i]) }
+            }
+            xs += x0.toFloat(); ys += y(a.heights[0])
+            if (xs.size >= 2) {
+                val fillXs = floatArrayOf(xs.first()) + xs.toFloatArray() + floatArrayOf(x0.toFloat())
+                val fillYs = floatArrayOf(base) + ys.toFloatArray() + floatArrayOf(base)
+                shapes += Fill(fillXs, fillYs, RIDDEN)
+                shapes += Stroke(xs.toFloatArray(), ys.toFloatArray(), GREY, 2f)
+            }
+        }
         for (b in a.blocks(a.wantM / 20.0)) {
             val xs = ArrayList<Float>()
             val ys = ArrayList<Float>()
@@ -196,9 +304,10 @@ object FieldPainter {
                 d += a.stepM
             }
             xs += x(b.toM); ys += y(a.heightAt(b.toM))
-            // A hair of overlap, so no black line shows between two blocks.
-            xs += x(b.toM) + 0.6f; ys += y(a.heightAt(b.toM))
-            xs += x(b.toM) + 0.6f; ys += base
+            // A pixel of overlap, so no dark line shows between two blocks wherever the edge falls.
+            // The next block paints over the rest.
+            xs += x(b.toM) + 1f; ys += y(a.heightAt(b.toM))
+            xs += x(b.toM) + 1f; ys += base
             // Past a junction taken on a guess, the blocks are dimmed: likely, not known.
             val colour = s.palette.colour(b.gradePct)
             shapes += Fill(xs.toFloatArray(), ys.toFloatArray(), if (guess != null && (b.fromM + b.toM) / 2 >= guess) dim(colour) else colour)
@@ -259,7 +368,7 @@ object FieldPainter {
             }
         }
         // You are here.
-        shapes += Dot(5f, y(a.heights[0]), if (tiny) 4f else 5f, WHITE)
+        shapes += Dot(if (behindOn) x0.toFloat() else 5f, y(a.heights[0]), if (tiny) 4f else 5f, WHITE)
         return Picture(w, h, shapes)
     }
 

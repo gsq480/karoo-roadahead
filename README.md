@@ -7,7 +7,7 @@ account.
 
 ![The Road ahead field at four sizes, and what it shows before you move or with no elevation file](docs/field.png)
 
-This is version 0.2.2, a beta. It has been ridden on a Karoo 3 and tested against recorded
+This is version 0.3.0, a beta. It has been ridden on a Karoo 3 and tested against recorded
 rides. It has not been tested on a Karoo 2. If it gets a road wrong, open an issue and say where.
 
 The page for riders, with pictures and a straight install button: https://karoo-roadahead.pages.dev
@@ -18,13 +18,16 @@ Road Ahead is free. If it's useful to you, you can [leave a tip](https://ko-fi.c
 
 - The profile of the road ahead, coloured by grade in blocks, with you at the left edge. The
   colours match the Karoo's own climb colours. Downhill is grey.
-- The distance shown, the climbing inside it and the steepest pitch.
+- The numbers you pick: the distance shown, the climbing inside it, the average grade to the
+  highest point ahead and the steepest pitch.
 - The name of the road it is following.
+- If you want it, the road you've just ridden, in dark grey to the left of you.
 - At a T-junction or a fork it carries on along the likeliest road, so the field always shows the
   distance you asked for. Past the first guess the profile is dimmer, with a tick on the line
   where the guessing starts. Turn off the road shown and it redraws within a couple of seconds.
-- On a half-width tile it is the graph alone. A flat road runs through the middle of the tile, a
-  climb starts low and a descent starts high.
+- The graph fills the tile, so small rises are easy to see. A flat road still runs through the
+  middle, a climb starts low and a descent starts high.
+- On a half-width tile it is the graph alone, unless you ask for words on every tile.
 
 Tap the field to step between 2, 5 and 10 km. It works with or without a route, and before you
 press start.
@@ -56,14 +59,20 @@ you are, it says so and draws nothing.
 
 ## Settings
 
-The app's screen shows the field as it looks right now, what it has found, and every setting:
+The app's screen shows the field as it looks right now, at full and half width, what it has
+found, and every setting:
 
 - The distances a tap steps through: any of 1, 2, 5, 10 and 20 km.
 - Words and numbers on the field: always, only on full-width tiles, or never.
 - Text size: large or small. Large leaves the road name off a tile of ordinary height, to keep the graph tall.
 - At a junction: carry on along the likeliest road, or stop the picture there.
 - The colours: the Karoo's or Wahoo's.
-- The numbers on the field: climbing ahead, steepest pitch, or neither.
+- The numbers on the field: any of the distance shown, climbing ahead, average grade to the top
+  and steepest pitch. The average runs from you to the highest point ahead, or down to the lowest
+  when the road only drops. If the numbers don't fit a tile, they shrink, then distance and
+  climbing drop off first.
+- Graph height: fill the tile, or true to the slope, which keeps gentle roads looking gentle.
+- The road behind you: off, a fifth of the field or a third.
 - How far around you to fetch elevation: 10, 30 or 60 km.
 - The elevation files held, each with **Delete**, and **Fetch now**.
 

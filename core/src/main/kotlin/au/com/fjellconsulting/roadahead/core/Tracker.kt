@@ -31,6 +31,7 @@ class Tracker(
     private val snap = RoadSnap(rules)
     private val follow = RoadFollow(roads, rules)
     private val builder = ProfileBuilder(heights, rules)
+    private val trail = Trail()
 
     private var anchor: Pt? = null
     private var course: Double? = null
@@ -68,7 +69,7 @@ class Tracker(
      *   fixes themselves to give a direction.
      * @param wantM how far ahead the rider has asked to see.
      */
-    fun update(p: Pt, orientation: Double?, wantM: Double): Look {
+    fun update(p: Pt, orientation: Double?, wantM: Double, behindM: Double = 0.0): Look {
         val a = anchor
         if (a == null) {
             anchor = p
@@ -95,7 +96,8 @@ class Tracker(
             profile = builder.build(next)
         }
         val prof = profile ?: return Look.NoHeights(HgtFile.nameFor(p))
-        return Look.Road(slice(prof, wantM))
+        trail.add(p, prof.heightAt(posM))
+        return Look.Road(slice(prof, wantM, behindM))
     }
 
     /** Drop the prediction in hand, so the next fix works out a new one. For when new map or elevation files arrive. */
@@ -151,7 +153,7 @@ class Tracker(
         return true
     }
 
-    private fun slice(prof: Profile, wantM: Double): Ahead {
+    private fun slice(prof: Profile, wantM: Double, behindM: Double): Ahead {
         val left = prof.lengthM - posM
         val shown = min(wantM, left).coerceAtLeast(0.0)
         val dists = sampleDists(shown, prof.stepM)
@@ -159,7 +161,7 @@ class Tracker(
         val end = if (left > wantM + 0.5) End.FAR_ENOUGH else prof.end
         // The first junction still ahead that was taken on a guess, if it is in view.
         val guess = prof.guessesM.firstOrNull { it > posM + 1.0 }?.minus(posM)?.takeIf { it < shown - 1.0 }
-        return Ahead(prof.stepM, heights, shown, wantM, end, prof.roadName, guess)
+        return Ahead(prof.stepM, heights, shown, wantM, end, prof.roadName, guess, if (behindM > 0.0) trail.behind(prof.stepM, behindM) else DoubleArray(0))
     }
 
     private companion object {

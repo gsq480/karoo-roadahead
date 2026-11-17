@@ -139,10 +139,12 @@ class ProfileTest {
     }
 
     @Test fun dropsWhatDoesNotFitANarrowOrShortField() {
-        val narrow = texts(FieldPainter.paint(Look.Road(ahead(2000.0, End.FAR_ENOUGH)), 240, 150, FieldSettings(labels = Labels.ALWAYS)))
-        assertEquals(listOf("2.0 km", "+100 m"), narrow)
+        // A half-width tile fits all three by shrinking them, rather than dropping one.
+        val narrowPicture = FieldPainter.paint(Look.Road(ahead(2000.0, End.FAR_ENOUGH)), 240, 150, FieldSettings(labels = Labels.ALWAYS))
+        assertEquals(listOf("2.0 km", "+100 m", "5 % max"), texts(narrowPicture))
+        assertTrue(narrowPicture.shapes.filterIsInstance<Label>().all { it.runs[0].size < 32f && it.runs[0].size >= 24f })
         val narrowSmall = texts(FieldPainter.paint(Look.Road(ahead(2000.0, End.FAR_ENOUGH)), 240, 150, FieldSettings(labels = Labels.ALWAYS, textSize = TextSize.SMALL)))
-        assertEquals(listOf("ROAD AHEAD", "2.0 km", "+100 m"), narrowSmall)
+        assertEquals(listOf("ROAD AHEAD", "2.0 km", "+100 m", "5 % max"), narrowSmall)
         val short = texts(FieldPainter.paint(Look.Road(ahead(2000.0, End.FAR_ENOUGH)), 480, 90, FieldSettings()))
         assertEquals(listOf("2.0 km", "+100 m", "5 % max"), short)
     }
@@ -322,4 +324,95 @@ class ProfileTest {
         t.update(east(0.0), null, 2000.0)
         assertEquals(Look.NoHeights("S36E149.hgt"), t.update(east(20.0), null, 2000.0))
     }
+
+    @Test fun averageGradeRunsToTheHighOrLowPoint() {
+        fun ahead(heights: DoubleArray) = Ahead(10.0, heights, (heights.size - 1) * 10.0, 100.0, End.FAR_ENOUGH, null)
+        assertEquals(50.0, ahead(doubleArrayOf(0.0, 5.0, 10.0, 15.0)).averageToTopPct(), 0.001)
+        assertEquals(66.6667, ahead(doubleArrayOf(0.0, 10.0, 5.0, 20.0, 10.0)).averageToTopPct(), 0.001)
+        assertEquals(-50.0, ahead(doubleArrayOf(20.0, 15.0, 10.0)).averageToTopPct(), 0.001)
+        assertEquals(0.0, ahead(doubleArrayOf(20.0, 21.0, 20.0)).averageToTopPct(), 0.001)
+    }
+
+    @Test fun laysOutNumbersInOrderAndDropsDistanceWhenNeeded() {
+        val a = ahead(2000.0, End.FAR_ENOUGH)
+        fun labels(settings: FieldSettings, w: Int, h: Int) = FieldPainter.paint(Look.Road(a), w, h, settings).shapes.filterIsInstance<Label>()
+        // David Garcia's layout D on a half-width tile: climb, average and steepest, all of them.
+        val three = labels(FieldSettings(labels = Labels.ALWAYS, showDistance = false, showAverage = true), 240, 128)
+        assertEquals(listOf("+100 m", "5 % avg", "5 % max"), three.map { it.runs.joinToString("") { r -> r.text } })
+        assertEquals(10f, three.first().x, 0f)
+        assertEquals(230f, three.last().x, 0f)
+        assertTrue(three.zipWithNext().all { it.first.x < it.second.x })
+        val narrow = labels(FieldSettings(labels = Labels.ALWAYS, showAverage = true), 240, 128).map { it.runs.joinToString("") { r -> r.text } }
+        assertEquals(listOf("+100 m", "5 % avg", "5 % max"), narrow)
+        val wide = labels(FieldSettings(labels = Labels.ALWAYS, showAverage = true), 480, 150).map { it.runs.joinToString("") { r -> r.text } }
+        assertEquals(listOf("2.0 km", "+100 m", "5 % avg", "5 % max"), wide)
+    }
+
+    @Test fun trailIgnoresWanderInterpolatesAndTrims() {
+        val trail = Trail(10.0, 25.0, 300.0)
+        trail.add(east(0.0), 0.0)
+        trail.add(east(5.0), 5.0)
+        trail.add(east(10.0), 10.0)
+        trail.add(east(20.0), 20.0)
+        trail.add(east(30.0), 30.0)
+        val back = trail.behind(10.0, 20.0)
+        assertEquals(2, back.size)
+        assertEquals(20.0, back[0], 0.01)
+        assertEquals(10.0, back[1], 0.01)
+        trail.add(east(40.0), 40.0)
+        trail.add(east(50.0), 50.0)
+        assertTrue(trail.behind(10.0, 100.0).size <= 3)
+        trail.add(east(450.0), 450.0)
+        assertEquals(0, trail.behind(10.0, 100.0).size)
+    }
+
+    @Test fun behindViewDrawsLeftOfTheRiderAndOffKeepsTheOldDot() {
+        val base = ahead(2000.0, End.FAR_ENOUGH)
+        val a = Ahead(base.stepM, base.heights, base.lengthM, base.wantM, base.end, base.roadName, behind = doubleArrayOf(610.0, 620.0, 630.0))
+        val p = FieldPainter.paint(Look.Road(a), 480, 150, FieldSettings(behind = Behind.FIFTH))
+        val x0 = 96f
+        val fill = p.shapes.filterIsInstance<Fill>().first { it.argb == 0xFF262B30.toInt() }
+        assertTrue(fill.xs.all { it <= x0 })
+        assertEquals(x0, p.shapes.filterIsInstance<Dot>().single().x, 0f)
+        val old = FieldPainter.paint(Look.Road(a), 480, 150, FieldSettings())
+        assertEquals(5f, old.shapes.filterIsInstance<Dot>().single().x, 0f)
+        assertTrue(old.shapes.filterIsInstance<Fill>().none { it.argb == 0xFF262B30.toInt() })
+    }
+
+    @Test fun fillUsesMoreOfTheGraphThanTrueScale() {
+        val dists = sampleDists(2000.0, 25.0)
+        val a = Ahead(25.0, DoubleArray(dists.size) { 500.0 + dists[it] * 0.01 }, 2000.0, 2000.0, End.FAR_ENOUGH, null)
+        // With no words the graph runs from y 8 to the base at y 142, 134 px.
+        fun ratio(height: GraphHeight): Double {
+            val p = FieldPainter.paint(Look.Road(a), 480, 150, FieldSettings(labels = Labels.NEVER, graphHeight = height))
+            val line = p.shapes.filterIsInstance<Stroke>().first { !it.dashed }
+            return (line.ys.max() - line.ys.min()) / 134.0
+        }
+        assertTrue(ratio(GraphHeight.FILL) >= 0.8)
+        assertTrue(ratio(GraphHeight.TRUE) < 0.5)
+    }
+
+    @Test fun trackerTrailDoesNotChangeItsPredictionOrPosition() {
+        val withTrail = tracker()
+        val withoutTrail = tracker()
+        var look: Look = Look.Waiting
+        for (m in 0..600 step 10) {
+            look = withTrail.update(east(m.toDouble()), null, 2000.0, 500.0)
+            withoutTrail.update(east(m.toDouble()), null, 2000.0)
+        }
+        val ahead = (look as Look.Road).ahead
+        assertTrue(ahead.behind.isNotEmpty())
+        assertEquals(withoutTrail.currentPath!!.lengthM, withTrail.currentPath!!.lengthM, 0.0)
+        assertEquals(withoutTrail.positionM, withTrail.positionM, 0.0)
+    }
+
+
+    @Test fun shrinkingTheNumberRowGivesHeightBackToTheGraph() {
+        val look = Look.Road(ahead(2000.0, End.FAR_ENOUGH))
+        val shrunk = FieldPainter.paint(look, 270, 150, FieldSettings(labels = Labels.ALWAYS, showAverage = true))
+        val full = FieldPainter.paint(look, 270, 150, FieldSettings(labels = Labels.ALWAYS, showDistance = false, showClimb = true, showAverage = true, showSteepest = false))
+        fun plotTop(p: Picture) = p.shapes.filterIsInstance<Fill>().minOf { it.ys.min() }
+        assertTrue(plotTop(shrunk) < plotTop(full))
+    }
+
 }

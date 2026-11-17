@@ -58,7 +58,7 @@ class RoadAheadField(extension: String) : DataTypeImpl(extension, TYPE_ID) {
     }
 
     private fun settings(app: RoadAheadApp) =
-        FieldSettings(app.prefs.palette, app.prefs.showClimb, app.prefs.showSteepest, app.engine.imperial, app.prefs.labels, app.prefs.textSize)
+        app.prefs.fieldSettings(app.engine.imperial)
 
     private fun views(context: Context, picture: Picture) =
         RemoteViews(context.packageName, R.layout.field_road).apply { setImageViewBitmap(R.id.road_image, Draw.bitmap(picture)) }

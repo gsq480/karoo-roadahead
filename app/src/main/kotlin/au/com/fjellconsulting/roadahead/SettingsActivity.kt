@@ -18,7 +18,8 @@ import android.widget.RadioGroup
 import android.widget.ScrollView
 import android.widget.TextView
 import au.com.fjellconsulting.roadahead.core.FieldPainter
-import au.com.fjellconsulting.roadahead.core.FieldSettings
+import au.com.fjellconsulting.roadahead.core.Behind
+import au.com.fjellconsulting.roadahead.core.GraphHeight
 import au.com.fjellconsulting.roadahead.core.Labels
 import au.com.fjellconsulting.roadahead.core.TextSize
 import au.com.fjellconsulting.roadahead.core.Palette
@@ -31,6 +32,7 @@ import au.com.fjellconsulting.roadahead.core.Palette
 class SettingsActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var preview: ImageView
+    private lateinit var halfPreview: ImageView
     private lateinit var allow: Button
     private lateinit var files: LinearLayout
     private val clock = Handler(Looper.getMainLooper())
@@ -58,6 +60,11 @@ class SettingsActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
         }
         page.addView(preview)
+        page.addView(text("Half-width tile", 14f, GREY))
+        halfPreview = ImageView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(240, 128)
+        }
+        page.addView(halfPreview)
         status = text("", 17f, Color.WHITE)
         page.addView(status)
         allow = Button(this).apply {
@@ -97,8 +104,19 @@ class SettingsActivity : Activity() {
         page.addView(text("Carrying on always shows the full distance. Past the first guess the picture is dimmer, with a tick where the guessing starts.", 14f, GREY))
 
         page.addView(heading("Numbers on the field"))
+        page.addView(check("Distance shown", prefs.showDistance).apply { setOnClickListener { prefs.showDistance = isChecked } })
         page.addView(check("Climbing ahead", prefs.showClimb).apply { setOnClickListener { prefs.showClimb = isChecked } })
+        page.addView(check("Average grade to the top", prefs.showAverage).apply { setOnClickListener { prefs.showAverage = isChecked } })
         page.addView(check("Steepest pitch ahead", prefs.showSteepest).apply { setOnClickListener { prefs.showSteepest = isChecked } })
+        page.addView(text("Average grade runs from you to the highest point ahead, or down to the lowest when the road only drops. If the numbers don't fit a tile, they shrink, then distance and climbing drop off first.", 14f, GREY))
+
+        page.addView(heading("Graph height"))
+        page.addView(choices(GraphHeight.values().map { it.label }, GraphHeight.values().indexOf(prefs.graphHeight)) { prefs.graphHeight = GraphHeight.values()[it] })
+        page.addView(text("Fill the tile makes small rises easy to see. True to the slope keeps gentle roads looking gentle.", 14f, GREY))
+
+        page.addView(heading("Road behind you"))
+        page.addView(choices(Behind.values().map { it.label }, Behind.values().indexOf(prefs.behind)) { prefs.behind = Behind.values()[it] })
+        page.addView(text("Shows the road you've just ridden in grey, to the left of the dot.", 14f, GREY))
 
         page.addView(heading("Fetch elevation for everywhere within"))
         page.addView(choices(Prefs.FETCH.map { "$it km of the Karoo" }, Prefs.FETCH.indexOf(prefs.fetchKm)) { prefs.fetchKm = Prefs.FETCH[it] })
@@ -177,8 +195,9 @@ class SettingsActivity : Activity() {
         status.text = "$maps\n$elevation ${app.download.status}\n\nRight now: ${engine.describe(engine.look.value)}.\n" +
             "Showing ${app.prefs.wantKm} km. Add the Road ahead field to a ride page under ROAD AHEAD."
         allow.visibility = if (engine.mapsAllowed) View.GONE else View.VISIBLE
-        val settings = FieldSettings(app.prefs.palette, app.prefs.showClimb, app.prefs.showSteepest, engine.imperial, app.prefs.labels, app.prefs.textSize)
+        val settings = app.prefs.fieldSettings(engine.imperial)
         preview.setImageBitmap(Draw.bitmap(FieldPainter.paint(engine.look.value, 480, 170, settings)))
+        halfPreview.setImageBitmap(Draw.bitmap(FieldPainter.paint(engine.look.value, 240, 128, settings)))
 
         // The list of files is only rebuilt when it changes, or a Delete button would move under a finger.
         val names = held.map { it.name }

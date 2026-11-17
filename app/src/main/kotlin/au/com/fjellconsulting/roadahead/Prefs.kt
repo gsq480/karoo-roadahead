@@ -1,6 +1,9 @@
 package au.com.fjellconsulting.roadahead
 
 import android.content.Context
+import au.com.fjellconsulting.roadahead.core.Behind
+import au.com.fjellconsulting.roadahead.core.FieldSettings
+import au.com.fjellconsulting.roadahead.core.GraphHeight
 import au.com.fjellconsulting.roadahead.core.Labels
 import au.com.fjellconsulting.roadahead.core.Palette
 import au.com.fjellconsulting.roadahead.core.TextSize
@@ -81,6 +84,30 @@ class Prefs(context: Context) {
             store.edit().putString("text_size", value.name).apply()
             changed()
         }
+
+    /** Show the distance in view along the top. On unless the rider unticks it. */
+    var showDistance: Boolean
+        get() = store.getBoolean("show_distance", true)
+        set(value) { store.edit().putBoolean("show_distance", value).apply(); changed() }
+
+    /** Show the average grade to the highest point ahead. Off until the rider ticks it. */
+    var showAverage: Boolean
+        get() = store.getBoolean("show_average", false)
+        set(value) { store.edit().putBoolean("show_average", value).apply(); changed() }
+
+    /** Whether the graph fills the tile or keeps its true scale. */
+    var graphHeight: GraphHeight
+        get() = runCatching { GraphHeight.valueOf(store.getString("graph_height", null) ?: "FILL") }.getOrDefault(GraphHeight.FILL)
+        set(value) { store.edit().putString("graph_height", value.name).apply(); changed() }
+
+    /** How much of the field shows the road already ridden. */
+    var behind: Behind
+        get() = runCatching { Behind.valueOf(store.getString("behind", null) ?: "OFF") }.getOrDefault(Behind.OFF)
+        set(value) { store.edit().putString("behind", value.name).apply(); changed() }
+
+    /** Everything the field's look depends on, for the field and both previews alike. */
+    fun fieldSettings(imperial: Boolean) = FieldSettings(
+        palette, showClimb, showSteepest, imperial, labels, textSize, showDistance, showAverage, graphHeight, behind)
 
     /**
      * At a T-junction or a fork: carry on along the likeliest road, so the field always shows the
