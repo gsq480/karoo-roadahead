@@ -50,7 +50,7 @@ class FollowTest {
     }
 
     private fun through(vararg roads: Road, maxM: Double = 5000.0): Path =
-        RoadFollow(RoadList(roads.toList())).follow(Spot(roads[0], 0, 0.0, true), maxM, through = true)
+        RoadFollow(RoadList(roads.toList())).follow(Spot(roads[0], 0, 0.0, true), maxM, AtJunction.LIKELIEST)
 
     @Test fun askedToCarryOnItGoesThroughATJunctionAndNotesTheGuess() {
         // Cross runs 200 m each way from the junction. Nothing says which way, so it is a guess.
@@ -193,6 +193,78 @@ class FollowTest {
         assertEndsNear(path, Geo.offset(x, 90.0, 340.0))
         // Half way round a 20 m ring is longer than the straight line across it.
         assertTrue(path.lengthM > 650.0)
+    }
+
+    /**
+     * The same roundabout drawn as one closed loop that starts part way round, as many maps have
+     * it: point i sits at 270 + (i - startAt) x 30 degrees, so you join it at point `startAt`.
+     */
+    private fun loopRoundabout(startAt: Int): List<Road> {
+        val centre = Geo.offset(x, 90.0, 20.0)
+        val ring = Road((0..12).map { Geo.offset(centre, (270.0 + (it - startAt) * 30.0 + 720.0) % 360.0, 20.0) }, roundabout = true)
+        fun exit(bearing: Double, name: String) = Road(line(Geo.offset(centre, bearing, 20.0), bearing, 300.0), name = name)
+        return listOf(main, ring, exit(0.0, "North"), exit(90.0, "Main"), exit(180.0, "South"))
+    }
+
+    @Test fun goesRoundALoopRoundaboutJoinedPastWhereItsLoopStarts() {
+        // Joined at point 10, the loop's own end comes before any exit. Up to 0.3.1 it stopped there.
+        assertEndsNear(follow(*loopRoundabout(10).toTypedArray()), Geo.offset(x, 90.0, 340.0))
+        // Joined at point 9, the north exit comes before the loop's end and the east one after it.
+        // Up to 0.3.1 it took the north exit, the only one it found.
+        assertEndsNear(follow(*loopRoundabout(9).toTypedArray()), Geo.offset(x, 90.0, 340.0))
+        // Carrying on through junctions changes nothing: a roundabout is never a guess.
+        val path = through(*loopRoundabout(10).toTypedArray())
+        assertEndsNear(path, Geo.offset(x, 90.0, 340.0))
+        assertTrue(path.guessesM.isEmpty())
+    }
+
+    @Test fun neverLeavesARoundaboutByTheRoadItCameInOn() {
+        // Main comes up from the south and joins the ring on its west side, running in beside it,
+        // so the ring passes within a metre of Main just before the place you joined. Main is the
+        // only way out with your road's name, and it must not be taken: round to the north exit.
+        val centre = Geo.offset(x, 90.0, 20.0)
+        val up = Road(line(Geo.offset(x, 180.0, 300.0), 0.0, 300.0), name = "Main", oneway = true)
+        val ring = Road((0..24).map { Geo.offset(centre, it * 15.0 % 360.0, 20.0) }, roundabout = true)
+        fun exit(bearing: Double, name: String) = Road(line(Geo.offset(centre, bearing, 20.0), bearing, 300.0), name = name)
+        val path = follow(up, ring, exit(0.0, "North"), exit(90.0, "East"), exit(180.0, "South"))
+        assertEndsNear(path, Geo.offset(Geo.offset(centre, 0.0, 20.0), 0.0, 300.0))
+        assertEquals(End.ROAD_ENDS, path.end)
+    }
+
+    // Which way a guess goes. Main heads east, so left is north and right is south.
+
+    private fun guessing(at: AtJunction, vararg roads: Road): Path =
+        RoadFollow(RoadList(roads.toList())).follow(Spot(roads[0], 0, 0.0, true), 5000.0, at)
+
+    @Test fun leftFirstAndRightFirstPickTheirSideOfAT() {
+        assertEndsNear(guessing(AtJunction.LEFT_FIRST, main, cross()), Geo.offset(x, 0.0, 200.0))
+        assertEndsNear(guessing(AtJunction.RIGHT_FIRST, main, cross()), Geo.offset(x, 180.0, 200.0))
+        assertEquals(listOf(300.0), guessing(AtJunction.LEFT_FIRST, main, cross()).guessesM.map { Math.round(it).toDouble() })
+    }
+
+    @Test fun leftFirstTakesTheLeftForkOverTheGentlerRight() {
+        // A fork: one road bears 60 degrees left, the other 40 right.
+        val left = Road(line(x, 30.0, 400.0), name = "Left")
+        val right = Road(line(x, 130.0, 400.0), name = "Right")
+        assertEndsNear(guessing(AtJunction.LEFT_FIRST, main, left, right), Geo.offset(x, 30.0, 400.0))
+        assertEndsNear(guessing(AtJunction.RIGHT_FIRST, main, left, right), Geo.offset(x, 130.0, 400.0))
+        // The likeliest is the smaller turn.
+        assertEndsNear(guessing(AtJunction.LIKELIEST, main, left, right), Geo.offset(x, 130.0, 400.0))
+    }
+
+    @Test fun withNoLeftTurnLeftFirstTakesTheStraightestWayOn() {
+        // Both roads bear right, 40 and 80 degrees: straighter first, then the sharper right.
+        val gentle = Road(line(x, 130.0, 400.0), name = "Gentle")
+        val sharp = Road(line(x, 170.0, 400.0), name = "Sharp")
+        assertEndsNear(guessing(AtJunction.LEFT_FIRST, main, gentle, sharp), Geo.offset(x, 130.0, 400.0))
+        assertEndsNear(guessing(AtJunction.RIGHT_FIRST, main, gentle, sharp), Geo.offset(x, 170.0, 400.0))
+    }
+
+    @Test fun leftFirstStillGoesStraightOverACrossroads() {
+        // The road carries straight on, so nothing is guessed and the side street is not taken.
+        val path = guessing(AtJunction.LEFT_FIRST, main, Road(line(x, 90.0, 500.0), name = "Main"), cross())
+        assertEquals(800.0, path.lengthM, 1.0)
+        assertTrue(path.guessesM.isEmpty())
     }
 
     @Test fun tellsARoundaboutByItsShapeWhenTheMapDoesNotSay() {

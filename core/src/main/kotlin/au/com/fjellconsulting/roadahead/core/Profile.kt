@@ -149,7 +149,20 @@ class Ahead(
     val guessFromM: Double? = null,
     /** Heights already ridden, nearest first, one every [stepM]. */
     val behind: DoubleArray = DoubleArray(0),
+    /**
+     * The coloured blocks in view, laid at fixed places along the road by the [Tracker], so their
+     * colours stay put as you ride. Null for one made by hand, which cuts them from where you are.
+     */
+    val fixedBlocks: List<Block>? = null,
 ) {
+    companion object {
+        /** The view is coloured in this many blocks, so a block is a twentieth of the distance shown. */
+        const val BLOCKS = 20
+    }
+
+    /** The blocks the field colours by grade. */
+    val colourBlocks: List<Block> by lazy { fixedBlocks ?: blocks(wantM / BLOCKS) }
+
     /** The average grade from the rider to the highest point in view; when the road only drops, to the lowest point instead, so it comes out negative. */
     fun averageToTopPct(): Double {
         val high = heights.indices.maxByOrNull { heights[it] } ?: return 0.0
@@ -184,6 +197,14 @@ class Ahead(
         return out
     }
 
-    /** The steepest block in view, as a grade. Null on a road too short to have one. */
-    fun steepestPct(blockM: Double): Double? = blocks(blockM).filter { it.toM - it.fromM >= blockM / 2 }.maxOfOrNull { it.gradePct }
+    /**
+     * The steepest coloured block in view, as a grade. A block counts when at least half of it is
+     * in view, and so does the one you're on when more follow, because its grade is its whole
+     * length's. Null on a road too short to have one.
+     */
+    fun steepestPct(): Double? {
+        val half = wantM / BLOCKS / 2
+        val all = colourBlocks
+        return all.filterIndexed { i, b -> b.toM - b.fromM >= half || (i == 0 && all.size > 1) }.maxOfOrNull { it.gradePct }
+    }
 }

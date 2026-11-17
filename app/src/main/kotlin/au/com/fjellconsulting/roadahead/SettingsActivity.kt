@@ -18,6 +18,7 @@ import android.widget.RadioGroup
 import android.widget.ScrollView
 import android.widget.TextView
 import au.com.fjellconsulting.roadahead.core.FieldPainter
+import au.com.fjellconsulting.roadahead.core.AtJunction
 import au.com.fjellconsulting.roadahead.core.Behind
 import au.com.fjellconsulting.roadahead.core.GraphHeight
 import au.com.fjellconsulting.roadahead.core.Labels
@@ -100,8 +101,8 @@ class SettingsActivity : Activity() {
         page.addView(text("Large reads at a glance on the bike. On a tile of ordinary height it leaves out the road name to keep the graph tall.", 14f, GREY))
 
         page.addView(heading("At a junction"))
-        page.addView(choices(listOf("Carry on along the likeliest road", "Stop the picture there"), if (prefs.through) 0 else 1) { prefs.through = it == 0 })
-        page.addView(text("Carrying on always shows the full distance. Past the first guess the picture is dimmer, with a tick where the guessing starts.", 14f, GREY))
+        page.addView(choices(AtJunction.values().map { it.label }, AtJunction.values().indexOf(prefs.junction)) { prefs.junction = AtJunction.values()[it] })
+        page.addView(text("This is for a T-junction or a fork, where the road you're on doesn't carry on by name or straight ahead. The likeliest road is the one with the same name, otherwise the smallest turn. Carrying on always shows the full distance. Past the first guess the picture is dimmer, with a tick where the guessing starts.", 14f, GREY))
 
         page.addView(heading("Numbers on the field"))
         page.addView(check("Distance shown", prefs.showDistance).apply { setOnClickListener { prefs.showDistance = isChecked } })

@@ -155,7 +155,7 @@ class Engine(private val app: RoadAheadApp) {
         val t = tracker
         val before = t?.predictions
         val look = if (t == null) Look.NoMap else runCatching {
-            t.through = app.prefs.through
+            t.junction = app.prefs.junction
             t.update(fix.pt, fix.orientation, app.prefs.wantKm * 1000.0, app.prefs.behind.behindM(app.prefs.wantKm * 1000.0))
         }.getOrElse {
             Log.w(TAG, "the prediction failed", it)

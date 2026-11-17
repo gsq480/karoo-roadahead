@@ -19,6 +19,21 @@ enum class End {
     NO_HEIGHTS,
 }
 
+/**
+ * What the picture does where the road splits and no rule says which way: a T-junction, or a fork
+ * with no road carrying straight on. Every choice but [STOP] carries on, so the picture always
+ * reaches the distance asked for.
+ */
+enum class AtJunction(val label: String) {
+    /** The piece with the same name, otherwise the smallest turn. */
+    LIKELIEST("Carry on along the likeliest road"),
+    /** The leftmost way on: a left turn if there is one, then straight on, then right. */
+    LEFT_FIRST("Carry on: left, then straight on, then right"),
+    /** The rightmost way on: a right turn if there is one, then straight on, then left. */
+    RIGHT_FIRST("Carry on: right, then straight on, then left"),
+    STOP("Stop the picture there"),
+}
+
 class Path(
     val points: List<PathPoint>,
     val end: End,
@@ -60,13 +75,14 @@ class Path(
  * of those it stops, because you have to turn. A roundabout takes the exit that carries on the
  * way you came in.
  *
- * Asked to go `through`, it doesn't stop at a T-junction or a fork. It takes the likeliest way on
- * (the piece with the same name, otherwise the smallest turn) and notes where it guessed, so the
- * picture always reaches the distance asked for.
+ * Unless told to [AtJunction.STOP], it doesn't stop at a T-junction or a fork. It takes the way on
+ * the rider picked (the likeliest, or the leftmost or rightmost) and notes where it guessed, so
+ * the picture always reaches the distance asked for.
  */
 class RoadFollow(private val source: RoadSource, private val rules: Rules = Rules()) {
 
-    private class Option(val spot: Spot, val bearing: Double, val turn: Double) {
+    /** One way on. [side] is the turn with its direction: below zero to the left, above to the right. */
+    private class Option(val spot: Spot, val bearing: Double, val turn: Double, val side: Double) {
         val road: Road get() = spot.road
     }
 
@@ -79,7 +95,7 @@ class RoadFollow(private val source: RoadSource, private val rules: Rules = Rule
      */
     private class Joins(val options: List<Option>, val arms: List<Arm>)
 
-    fun follow(start: Spot, maxM: Double, through: Boolean = false): Path {
+    fun follow(start: Spot, maxM: Double, at: AtJunction = AtJunction.STOP): Path {
         val out = ArrayList<PathPoint>()
         val guesses = ArrayList<Double>()
         fun done(end: End) = Path(out, end, name(start), start.road.kind, guesses)
@@ -110,7 +126,7 @@ class RoadFollow(private val source: RoadSource, private val rules: Rules = Rule
             val arriving = arrivalBearing(out) ?: spot.bearing(rules.bearingLookM) ?: return done(End.ROAD_ENDS)
             val met = joins(prev, spot.road, arriving) ?: return done(End.NO_MAP)
             var next = choose(spot.road, met)
-                ?: (if (through) guess(spot.road, met)?.also { guesses += dist } else null)
+                ?: (if (at != AtJunction.STOP) guess(spot.road, met, at)?.also { guesses += dist } else null)
                 ?: return done(when {
                     met.options.any { it.turn <= rules.maxTurn } -> End.TURN
                     // A circuit mapped as one closed piece: a lap is as far as it goes.
@@ -136,15 +152,20 @@ class RoadFollow(private val source: RoadSource, private val rules: Rules = Rule
     private fun name(start: Spot): String? = start.road.label
 
     /**
-     * No rule settles it: a T-junction or a fork. The likeliest way on is the piece with the same
-     * name, otherwise the smallest turn, and a road rather than a driveway or path when you're on
-     * a road.
+     * No rule settles it: a T-junction or a fork. Whichever way the rider picked, a road wins over
+     * a driveway or path when you're on a road. The likeliest way on is the piece with the same
+     * name, otherwise the smallest turn. Left first takes the leftmost way on, so a left turn when
+     * there is one, then straight on, then right; right first is the mirror of it.
      */
-    private fun guess(current: Road, met: Joins): Option? {
+    private fun guess(current: Road, met: Joins, at: AtJunction): Option? {
         val onward = met.options.filter { it.turn <= rules.maxTurn }
         val pool = if (current.roadClass == RoadClass.ROAD) onward.filter { it.road.roadClass == RoadClass.ROAD }.ifEmpty { onward } else onward
-        return pool.minByOrNull {
-            it.turn + (if (current.sameRoadAs(it.road)) -1000.0 else 0.0) + (if (it.road.kind != current.kind) 10.0 else 0.0)
+        return when (at) {
+            AtJunction.LEFT_FIRST -> pool.minByOrNull { it.side }
+            AtJunction.RIGHT_FIRST -> pool.maxByOrNull { it.side }
+            else -> pool.minByOrNull {
+                it.turn + (if (current.sameRoadAs(it.road)) -1000.0 else 0.0) + (if (it.road.kind != current.kind) 10.0 else 0.0)
+            }
         }
     }
 
@@ -189,7 +210,7 @@ class RoadFollow(private val source: RoadSource, private val rules: Rules = Rule
                     arms += Arm(bearing, road.roadClass)
                 }
                 if (!forward && road.oneway) continue
-                found += Option(spot, bearing, Geo.turn(arriving, bearing))
+                found += Option(spot, bearing, Geo.turn(arriving, bearing), (bearing - arriving + 540.0) % 360.0 - 180.0)
             }
         }
         return Joins(found, arms)
@@ -198,6 +219,9 @@ class RoadFollow(private val source: RoadSource, private val rules: Rules = Rule
     private fun choose(current: Road, met: Joins): Option? {
         val onward = met.options.filter { it.turn <= rules.maxTurn }
         if (onward.isEmpty()) return null
+        // Arriving at a roundabout, you go round it. Which exit is worked out on the way round, so
+        // the way back round the ring, which you can't ride, doesn't make this a junction.
+        if (!current.roundabout) onward.firstOrNull { it.road.roundabout }?.let { return it }
         // On a road, a driveway or footpath straight across a T-junction is not the way onward.
         // They only count when no road meets this one at all.
         if (current.roadClass == RoadClass.ROAD) {
@@ -237,6 +261,7 @@ class RoadFollow(private val source: RoadSource, private val rules: Rules = Rule
     private fun roundabout(entry: Spot, from: Road, arriving: Double): Pair<List<Pt>, Option>? {
         class Exit(val index: Int, val option: Option)
 
+        val centre = entry.road.pts.let { pts -> Pt(pts.sumOf { it.lat } / pts.size, pts.sumOf { it.lng } / pts.size) }
         val ring = ArrayList<Pt>()
         ring += entry.at
         val exits = ArrayList<Exit>()
@@ -249,13 +274,27 @@ class RoadFollow(private val source: RoadSource, private val rules: Rules = Rule
                 if (d < 0.01) continue
                 ringM += d
                 ring += pt
-                val here = joins(pt, spot.road, arriving)?.options ?: return null
-                for (o in here) if (!o.road.roundabout && o.turn <= 150.0) exits += Exit(ring.size - 1, o)
+                // Back where you joined it: no way out there is one you'd take.
                 if (ringM > 10.0 && Geo.metres(pt, entry.at) < 3.0) break@walk
+                val here = joins(pt, spot.road, arriving)?.options ?: return null
+                for (o in here) {
+                    // A way out leads away from the ring. The road you came in on, which can pass
+                    // close by the ring just short of where you joined it, is not one.
+                    if (o.road.roundabout || o.turn > 150.0 || o.road.key == from.key) continue
+                    if (Geo.metres(centre, Geo.offset(pt, o.bearing, 10.0)) <= Geo.metres(centre, pt)) continue
+                    exits += Exit(ring.size - 1, o)
+                }
                 if (ringM > 500.0) break@walk
             }
-            val onward = joins(ring.last(), spot.road, arriving)?.options ?: return null
-            spot = onward.firstOrNull { it.road.roundabout && it.spot.forward }?.spot ?: break
+            // A roundabout drawn as one closed loop carries on round from where it was drawn from.
+            // Entered part way round, the walk reaches the loop's last point long before the way
+            // back to the entry, and the exits in between are only found by going on.
+            spot = if (Geo.metres(spot.road.pts.first(), spot.road.pts.last()) < 0.5) {
+                Spot(spot.road, 0, 0.0, true)
+            } else {
+                val onward = joins(ring.last(), spot.road, arriving)?.options ?: return null
+                onward.firstOrNull { it.road.roundabout && it.spot.forward }?.spot ?: break
+            }
         }
         if (exits.isEmpty()) return null
         val pool = if (from.roadClass == RoadClass.ROAD) {

@@ -7,7 +7,7 @@ account.
 
 ![The Road ahead field at four sizes, and what it shows before you move or with no elevation file](docs/field.png)
 
-This is version 0.3.1, a beta. It has been ridden on a Karoo 3 and tested against recorded
+This is version 0.4.0, a beta. It has been ridden on a Karoo 3 and tested against recorded
 rides. It has not been tested on a Karoo 2. If it gets a road wrong, open an issue and say where.
 
 The page for riders, with pictures and a straight install button: https://karoo-roadahead.pages.dev
@@ -17,14 +17,17 @@ Road Ahead is free. If it's useful to you, you can [leave a tip](https://ko-fi.c
 ## What the field shows
 
 - The profile of the road ahead, coloured by grade in blocks, with you at the left edge. The
-  colours match the Karoo's own climb colours. Downhill is grey.
+  colours match the Karoo's own climb colours. Downhill is grey. Each block is fixed to the
+  road, so it keeps its colour as you ride up to it and through it.
 - The numbers you pick: the distance shown, the climbing inside it, the average grade to the
   highest point ahead and the steepest pitch.
 - The name of the road it is following.
 - If you want it, the road you've just ridden, in dark grey to the left of you.
-- At a T-junction or a fork it carries on along the likeliest road, so the field always shows the
-  distance you asked for. Past the first guess the profile is dimmer, with a tick on the line
-  where the guessing starts. Turn off the road shown and it redraws within a couple of seconds.
+- At a T-junction or a fork it carries on along the likeliest road, or turns left or right first
+  if you set it to, so the field always shows the distance you asked for. Past the first guess
+  the profile is dimmer, with a tick on the line where the guessing starts. It goes round a
+  roundabout and out the likeliest exit. Turn off the road shown and it redraws within a couple
+  of seconds.
 - The graph fills the tile, so small rises are easy to see. A flat road still runs through the
   middle, a climb starts low and a descent starts high.
 - On a half-width tile it is the graph alone, unless you ask for words on every tile.
@@ -65,7 +68,9 @@ found, and every setting:
 - The distances a tap steps through: any of 1, 2, 5, 10 and 20 km.
 - Words and numbers on the field: always, only on full-width tiles, or never.
 - Text size: large or small. Large leaves the road name off a tile of ordinary height, to keep the graph tall.
-- At a junction: carry on along the likeliest road, or stop the picture there.
+- At a junction: carry on along the likeliest road; carry on turning left if you can, then
+  straight on, then right; the same turning right first; or stop the picture there. This only
+  matters where the road you're on doesn't carry on by name or straight ahead.
 - The colours: the Karoo's or Wahoo's.
 - The numbers on the field: any of the distance shown, climbing ahead, average grade to the top
   and steepest pitch. The average runs from you to the highest point ahead, or down to the lowest
@@ -81,7 +86,7 @@ Units follow the Karoo's rider profile.
 ## What it doesn't do well
 
 - It predicts one road. Past a junction it is a guess: the road with the same name, otherwise
-  the smallest turn. Turn the other way and the picture jumps. Load a route when you need to be
+  the smallest turn, or the side you picked. Turn the other way and the picture jumps. Load a route when you need to be
   sure.
 - Set to stop at junctions, in suburbs the profile is often shorter than the distance you asked
   for.
@@ -90,8 +95,8 @@ Units follow the Karoo's rider profile.
 - It doesn't detect climbs or send alerts. The Karoo's Climber does both with no route.
 
 Against nine recorded rides (454 km), the predicted heights sat a median 1.5 to 3.0 m from the
-altitude the ride recorded. Carrying on through junctions, the field showed the full 2 km 82% of
-the time on average, against 44% when it stops at them. The full 2 km was shown and was the road
+altitude the ride recorded. Carrying on through junctions, the field showed the full 2 km 86% of
+the time on average, against 45% when it stops at them. The full 2 km was shown and was the road
 then ridden 29% of the time, against 24%. The price is that less of what is shown turns out
 right: 58% of the picture on average, against 74%.
 
@@ -102,13 +107,16 @@ right: 58% of the picture on average, against 74%.
 2. **Follow the road** (`core/.../RoadFollow.kt`). At the end of a mapped piece it carries on
    along the piece with the same name, otherwise the one that runs straightest (within 30
    degrees), otherwise round a bend where nothing else meets the road. Anything else is a
-   junction. There it guesses (the same name, otherwise the smallest turn) and notes where, or
-   stops if the rider set it to. A roundabout takes the exit with your road's name,
-   otherwise the one that best carries on the way you came in.
+   junction. There it guesses (the same name, otherwise the smallest turn, or the leftmost or
+   rightmost way on if the rider picked that) and notes where, or stops if the rider set it to.
+   A roundabout takes the exit with your road's name, otherwise the one that best carries on the
+   way you came in, and never the road you came in on.
 3. **Read the heights** (`core/.../Heights.kt`, `Profile.kt`). It samples a 30 m elevation grid
    every 25 m along that road, smooths it, and draws a straight line across bridges and tunnels.
 4. **Keep it going** (`core/.../Tracker.kt`). The prediction holds while you stay on it, and a new
-   one is worked out when you leave it. Nothing is worked out while you're stopped.
+   one is worked out when you leave it. Nothing is worked out while you're stopped. The coloured
+   blocks sit at fixed places along the road, and each keeps the grade it was given until you
+   turn onto another road or change the distance shown.
 
 Every number those rules turn on is in `core/.../Rules.kt`.
 
@@ -182,14 +190,16 @@ Arguments: the road file, the folder that holds the `.hgt` elevation files, and 
 - `--want 5000` asks for 5 km ahead in place of 2 km.
 - `--cut` chops the roads into map tiles first, the way the Karoo's map files hand them over.
   The scores must not change.
-- `--stop` replays the rule that stops at junctions, to compare.
+- `--junction left` replays the left-first choice at junctions. It also takes `right`, `stop`
+  and `likeliest`, the default. `--stop` is the same as `--junction stop`.
 - `--trace` lists every new prediction and every miss.
 - `--png 58` draws what the field shows at fix 58, at four field sizes, to `out/field-58.png`.
 - `--dump 319` writes the predicted road and the ride after fix 319 to `out/dump-319.txt`.
 - `--moments out/m.json` writes a sample of what the field would have shown.
 
-It reports how often the picture was the road then ridden, who turned when it wasn't, and how far
-the predicted heights sat from the ride's own altitude.
+It reports how often the picture was the road then ridden, who turned when it wasn't, how far
+the predicted heights sat from the ride's own altitude, and how often a stretch of road changed
+colour while it was in view.
 
 ### Test data
 

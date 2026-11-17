@@ -1,5 +1,7 @@
 package au.com.fjellconsulting.roadahead.core
 
+import kotlin.math.floor
+import kotlin.math.max
 import kotlin.math.min
 
 /** What the field has to show after a GPS fix. */
@@ -40,11 +42,21 @@ class Tracker(
     private var posM = 0.0
 
     /**
-     * The rider's choice at a T-junction or a fork: carry on along the likeliest road so the
-     * picture always reaches the distance asked for, or stop there. Changing it drops the
-     * prediction in hand.
+     * How far along the roads followed so far the prediction in hand starts. The coloured blocks
+     * are laid from here, so their edges stay at the same places on the road from fix to fix.
      */
-    var through: Boolean = false
+    private var baseM = 0.0
+
+    /** Each block's grade once it is known, by its number along the road. See [colourBlocks]. */
+    private val grades = HashMap<Long, Double>()
+    private var gradesBlockM = 0.0
+
+    /**
+     * The rider's choice at a T-junction or a fork: carry on along the likeliest road, or the
+     * leftmost or rightmost, so the picture always reaches the distance asked for, or stop there.
+     * Changing it drops the prediction in hand.
+     */
+    var junction: AtJunction = AtJunction.STOP
         set(value) {
             if (field != value) {
                 field = value
@@ -63,6 +75,9 @@ class Tracker(
     /** The predicted road in hand, for the status screen and the replay tool. */
     val currentPath: Path? get() = path
     val positionM: Double get() = posM
+
+    /** How far along the roads followed you are, counted from where the current road began. For the replay tool. */
+    val alongM: Double get() = baseM + posM
 
     /**
      * @param orientation the Karoo's own heading, used only until you've moved far enough for the
@@ -89,9 +104,17 @@ class Tracker(
             predictedAt = p
             val near = roads.near(p, rules.snapRadiusM + 10.0) ?: return forget(Look.NoMap)
             val snapped = snap.snap(near, p, heading) ?: return forget(Look.NoRoad)
-            val next = follow.follow(snapped.spot, wantM + EXTRA_M, through)
+            val next = follow.follow(snapped.spot, wantM + EXTRA_M, junction)
             predictions++
             path = next
+            // Running on along the same road, the blocks keep their places and their colours.
+            // On a new road they start again.
+            if (held && current != null) {
+                baseM += posM
+            } else {
+                baseM = 0.0
+                grades.clear()
+            }
             posM = 0.0
             profile = builder.build(next)
         }
@@ -105,11 +128,13 @@ class Tracker(
         path = null
         profile = null
         predictedAt = null
+        grades.clear()
     }
 
     private fun forget(look: Look): Look {
         path = null
         profile = null
+        grades.clear()
         return look
     }
 
@@ -161,7 +186,44 @@ class Tracker(
         val end = if (left > wantM + 0.5) End.FAR_ENOUGH else prof.end
         // The first junction still ahead that was taken on a guess, if it is in view.
         val guess = prof.guessesM.firstOrNull { it > posM + 1.0 }?.minus(posM)?.takeIf { it < shown - 1.0 }
-        return Ahead(prof.stepM, heights, shown, wantM, end, prof.roadName, guess, if (behindM > 0.0) trail.behind(prof.stepM, behindM) else DoubleArray(0))
+        return Ahead(prof.stepM, heights, shown, wantM, end, prof.roadName, guess,
+            if (behindM > 0.0) trail.behind(prof.stepM, behindM) else DoubleArray(0), colourBlocks(prof, wantM / Ahead.BLOCKS, shown))
+    }
+
+    /**
+     * The coloured blocks in view. Their edges sit at fixed places along the road, not at fixed
+     * distances from the rider, and each block's grade is worked out once over its whole length
+     * and kept. So a block keeps its colour as you ride towards it and through it, even when the
+     * prediction is worked out again further along the same road. The grades start again on a
+     * new road, and when the distance shown, and so the length of a block, changes.
+     */
+    private fun colourBlocks(prof: Profile, blockM: Double, shown: Double): List<Block> {
+        if (blockM != gradesBlockM) {
+            grades.clear()
+            gradesBlockM = blockM
+        }
+        val here = baseM + posM
+        val first = floor(here / blockM).toLong()
+        grades.keys.removeIf { it < first }
+        val out = ArrayList<Block>()
+        var k = first
+        while (k * blockM < here + shown - 0.5) {
+            // The block's ends along the profile in hand.
+            val from = k * blockM - baseM
+            val to = from + blockM
+            val grade = grades[k] ?: run {
+                val a = from.coerceAtLeast(0.0)
+                val b = min(to, prof.lengthM)
+                val g = if (b - a < 1.0) 0.0 else (prof.heightAt(b) - prof.heightAt(a)) / (b - a) * 100.0
+                // Near the far end of a prediction that runs on, the smoothing still reaches past
+                // the end and the heights there can move a little, so a grade there isn't kept yet.
+                if (to <= prof.lengthM - SETTLED_M || prof.end != End.FAR_ENOUGH) grades[k] = g
+                g
+            }
+            out += Block(max(from - posM, 0.0), min(to - posM, shown), grade)
+            k++
+        }
+        return out
     }
 
     private companion object {
@@ -171,5 +233,7 @@ class Tracker(
         const val EXTRA_M = 1500.0
         const val BEHIND_M = 60.0
         const val AHEAD_M = 400.0
+        /** Heights this far from the end of a prediction that runs on are final: past the smoothing's reach. */
+        const val SETTLED_M = 150.0
     }
 }

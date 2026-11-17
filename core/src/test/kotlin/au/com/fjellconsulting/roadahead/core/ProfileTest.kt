@@ -8,6 +8,7 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.nio.ByteBuffer
+import kotlin.math.max
 
 /** Heights, the profile along a road, and the tracker that carries a prediction between fixes. */
 class ProfileTest {
@@ -81,7 +82,7 @@ class ProfileTest {
         assertEquals(10, blocks.size)
         for (b in blocks) assertEquals(5.0, b.gradePct, 0.05)
         assertEquals(50.0, ahead.climbM, 0.1)
-        assertEquals(5.0, ahead.steepestPct(100.0)!!, 0.05)
+        assertEquals(5.0, ahead.steepestPct()!!, 0.05)
     }
 
     @Test fun aBridgeIsDrawnStraightAcrossTheValleyUnderIt() {
@@ -311,6 +312,45 @@ class ProfileTest {
         for (m in 590 downTo 500 step 10) look = t.update(east(m.toDouble()), null, 2000.0)
         assertEquals(2, t.predictions)
         assertEquals(500.0, (look as Look.Road).ahead.lengthM, 0.1)
+    }
+
+    /** Ground that is level for 1,030 m east of `o`, then climbs at 6%. */
+    private val levelThenClimb = HeightSource { p ->
+        val m = Geo.metres(Pt(p.lat, o.lng), p) * (if (p.lng >= o.lng) 1.0 else -1.0)
+        600.0 + max(0.0, m - 1030.0) * 0.06
+    }
+
+    @Test fun aBlockKeepsItsPlaceAndItsColourAsYouRide() {
+        val t = Tracker(RoadList(listOf(road(0.0, 9000.0))), levelThenClimb)
+        // Every grade each block was drawn with, by where on the road the block starts.
+        val grades = HashMap<Long, MutableSet<Long>>()
+        for (m in 0..2600 step 5) {
+            val look = t.update(east(m.toDouble()), null, 2000.0) as? Look.Road ?: continue
+            for (b in look.ahead.colourBlocks.drop(1)) {
+                grades.getOrPut(Math.round(t.alongM + b.fromM)) { HashSet() } += Math.round(b.gradePct * 100)
+            }
+        }
+        // The ride went past where the first prediction ran short, and a second one took over.
+        assertEquals(2, t.predictions)
+        // Blocks start every 100 m along the road, and none changed colour.
+        val starts = grades.keys.sorted()
+        assertTrue(starts.size > 40)
+        assertTrue(starts.zipWithNext().all { (a, b) -> b - a == 100L })
+        assertTrue(grades.values.all { it.size == 1 })
+        // Level before the climb, 6% well into it.
+        assertEquals(0.0, grades.getValue(starts.first()).single() / 100.0, 0.05)
+        assertEquals(6.0, grades.getValue(starts.last()).single() / 100.0, 0.05)
+    }
+
+    @Test fun aNewRoadGetsItsOwnBlocks() {
+        val t = tracker()
+        for (m in 0..600 step 10) t.update(east(m.toDouble()), null, 2000.0)
+        var look: Look = Look.Waiting
+        for (m in 10..100 step 10) look = t.update(Geo.offset(east(600.0), 0.0, m.toDouble()), null, 2000.0)
+        // Main climbs at 5%, Side is level: none of Main's grades carry over.
+        val blocks = (look as Look.Road).ahead.colourBlocks
+        assertTrue(blocks.isNotEmpty())
+        assertTrue(blocks.all { kotlin.math.abs(it.gradePct) < 0.05 })
     }
 
     @Test fun saysSoWhenThereIsNoRoad() {

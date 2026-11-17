@@ -1,7 +1,9 @@
 package au.com.fjellconsulting.roadahead.replay
 
 import au.com.fjellconsulting.roadahead.core.Ahead
+import au.com.fjellconsulting.roadahead.core.AtJunction
 import au.com.fjellconsulting.roadahead.core.Behind
+import au.com.fjellconsulting.roadahead.core.Block
 import au.com.fjellconsulting.roadahead.core.FieldSettings
 import au.com.fjellconsulting.roadahead.core.FieldPainter
 import au.com.fjellconsulting.roadahead.core.End
@@ -9,11 +11,14 @@ import au.com.fjellconsulting.roadahead.core.Geo
 import au.com.fjellconsulting.roadahead.core.HgtFolder
 import au.com.fjellconsulting.roadahead.core.Labels
 import au.com.fjellconsulting.roadahead.core.Look
+import au.com.fjellconsulting.roadahead.core.Palette
 import au.com.fjellconsulting.roadahead.core.Path
 import au.com.fjellconsulting.roadahead.core.Pt
 import au.com.fjellconsulting.roadahead.core.Tracker
 import java.io.File
 import kotlin.math.abs
+import kotlin.math.ceil
+import kotlin.math.roundToLong
 import kotlin.system.exitProcess
 
 /**
@@ -41,8 +46,19 @@ fun main(args: Array<String>) {
         if (cut) roads = cutIntoTiles(roads)
         GridRoads(roads)
     }
-    // The app carries on through junctions on a guess. `--stop` replays the older rule, which stops there.
-    val tracker = Tracker(source, HgtFolder(File(args[1]))).also { it.through = "--stop" !in args }
+    // The app carries on through junctions on a guess. `--junction left` (or right, likeliest or
+    // stop) picks how, as the app's picker does; `--stop` is the same as `--junction stop`.
+    val junction = when (val j = flag("--junction") ?: if ("--stop" in args) "stop" else "likeliest") {
+        "likeliest" -> AtJunction.LIKELIEST
+        "left" -> AtJunction.LEFT_FIRST
+        "right" -> AtJunction.RIGHT_FIRST
+        "stop" -> AtJunction.STOP
+        else -> {
+            System.err.println("--junction takes likeliest, left, right or stop, not $j")
+            exitProcess(2)
+        }
+    }
+    val tracker = Tracker(source, HgtFolder(File(args[1]))).also { it.junction = junction }
     val pngAt = flag("--png")?.toInt() ?: -1
 
     class Fix(val pt: Pt, val alt: Double, var cumM: Double = 0.0)
@@ -67,6 +83,13 @@ fun main(args: Array<String>) {
     var lastCount = 0
     val dumpAt = flag("--dump")?.toInt() ?: -1
     var lastScoredM = -1000.0
+    // The colour drawn at the middle of each 10 m of road in view, by its place along the roads
+    // followed, for the blocks the field draws and for blocks cut from the rider as up to 0.3.1,
+    // to compare. The middle, because block edges fall on whole tens of metres.
+    val fixedSeen = HashMap<Long, Int>()
+    val riderSeen = HashMap<Long, Int>()
+    var fixedChanges = 0
+    var riderChanges = 0
 
     /** How much the ride changes direction around a fix: the 50 m before it against 50 to 130 m after. */
     fun rideTurn(k: Int): Double? {
@@ -93,6 +116,11 @@ fun main(args: Array<String>) {
         if (tracker.predictions != lastCount) {
             lastCount = tracker.predictions
             whys.merge(tracker.why, 1, Int::plus)
+            // On a new road the places along it start again from nought.
+            if (tracker.why != "ran short") {
+                fixedSeen.clear()
+                riderSeen.clear()
+            }
             if (trace) {
                 val path = tracker.currentPath
                 println("  fix %4d at %.0f m: %-17s -> %s, %.0f m, %s".format(i, ride[i].cumM, tracker.why,
@@ -114,6 +142,23 @@ fun main(args: Array<String>) {
         }
         if (look !is Look.Road) continue
         val ahead = look.ahead
+        run {
+            val here = tracker.alongM
+            val riderBlocks = ahead.blocks(ahead.wantM / Ahead.BLOCKS)
+            if (ahead.colourBlocks.isEmpty() || riderBlocks.isEmpty()) return@run
+            fun band(blocks: List<Block>, d: Double) =
+                Palette.KAROO.colour((blocks.firstOrNull { d < it.toM } ?: blocks.last()).gradePct)
+            val nearest = ceil((here - 5.0) / 10.0).roundToLong()
+            fixedSeen.keys.removeIf { it < nearest }
+            riderSeen.keys.removeIf { it < nearest }
+            var key = nearest
+            while (key * 10.0 + 5.0 < here + ahead.lengthM) {
+                val d = key * 10.0 + 5.0 - here
+                band(ahead.colourBlocks, d).let { c -> fixedSeen.put(key, c)?.let { if (it != c) fixedChanges++ } }
+                band(riderBlocks, d).let { c -> riderSeen.put(key, c)?.let { if (it != c) riderChanges++ } }
+                key++
+            }
+        }
         if (dumpAt == i) {
             val out = File("out/dump-$i.txt")
             out.writeText(tracker.currentPath!!.points.joinToString("\n") { "P,${it.pt.lat},${it.pt.lng},${it.distM}" } + "\n" +
@@ -191,6 +236,8 @@ fun main(args: Array<String>) {
     println("  share of the picture that was the road then ridden, on average: %.0f%%".format(100.0 * matchedSum / scored))
     println("  road shown: median %.0f m, a quarter of the time under %.0f m, full distance %s of the time".format(
         mid(shown, 0.5), mid(shown, 0.25), pct(shown.count { it >= wantM - 1 }, scored)))
+    println("  colour changes on road in view, per km ridden: %.1f with blocks fixed to the road, %.1f with blocks cut from the rider (up to 0.3.1)".format(
+        fixedChanges / (ride.last().cumM / 1000), riderChanges / (ride.last().cumM / 1000)))
     println("  where the picture stopped: " + ends.entries.sortedByDescending { it.value }.joinToString { "${it.key} ${pct(it.value, scored)}" })
     println("  height against the ride's own altitude, on road actually ridden: median %.1f m out, 90%% within %.1f m".format(
         mid(errors, 0.5), mid(errors, 0.9)))

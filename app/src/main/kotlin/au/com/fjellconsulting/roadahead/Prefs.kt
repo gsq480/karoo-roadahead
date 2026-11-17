@@ -1,6 +1,7 @@
 package au.com.fjellconsulting.roadahead
 
 import android.content.Context
+import au.com.fjellconsulting.roadahead.core.AtJunction
 import au.com.fjellconsulting.roadahead.core.Behind
 import au.com.fjellconsulting.roadahead.core.FieldSettings
 import au.com.fjellconsulting.roadahead.core.GraphHeight
@@ -110,13 +111,15 @@ class Prefs(context: Context) {
         palette, showClimb, showSteepest, imperial, labels, textSize, showDistance, showAverage, graphHeight, behind)
 
     /**
-     * At a T-junction or a fork: carry on along the likeliest road, so the field always shows the
-     * distance asked for, or stop the picture there.
+     * At a T-junction or a fork: carry on along the likeliest road, or the leftmost or rightmost,
+     * so the field always shows the distance asked for, or stop the picture there. Up to 0.3.1
+     * this was a yes or no, kept as `through`; a rider who chose to stop keeps that.
      */
-    var through: Boolean
-        get() = store.getBoolean("through", true)
+    var junction: AtJunction
+        get() = store.getString("junction", null)?.let { runCatching { AtJunction.valueOf(it) }.getOrNull() }
+            ?: if (store.getBoolean("through", true)) AtJunction.LIKELIEST else AtJunction.STOP
         set(value) {
-            store.edit().putBoolean("through", value).apply()
+            store.edit().putString("junction", value.name).apply()
             changed()
         }
 

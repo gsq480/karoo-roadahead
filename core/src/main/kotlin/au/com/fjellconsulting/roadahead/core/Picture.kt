@@ -195,7 +195,7 @@ object FieldPainter {
         // The numbers the rider ticked, always in the same order. If they don't fit across the
         // tile they shrink, to three quarters of their size at most, and if they still don't fit,
         // distance drops off first, then climbing. A shrunk row gives its height back to the graph.
-        val steepest = a.steepestPct(a.wantM / 20.0)?.let { max(0.0, it) }
+        val steepest = a.steepestPct()?.let { max(0.0, it) }
         val candidates = ArrayList<Reading>()
         if (words && s.showDistance) candidates += Reading(Units.distance(a.wantM, s.imperial), ReadingKind.DISTANCE)
         if (words && s.showClimb) candidates += Reading(Units.climb(a.climbM, s.imperial), ReadingKind.CLIMB)
@@ -294,7 +294,7 @@ object FieldPainter {
                 shapes += Stroke(xs.toFloatArray(), ys.toFloatArray(), GREY, 2f)
             }
         }
-        for (b in a.blocks(a.wantM / 20.0)) {
+        for (b in a.colourBlocks) {
             val xs = ArrayList<Float>()
             val ys = ArrayList<Float>()
             xs += x(b.fromM); ys += base

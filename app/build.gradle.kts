@@ -17,8 +17,8 @@ android {
         // an adb command, which rules out anyone who isn't at a desk with a Mac.
         //noinspection ExpiredTargetSdkVersion
         targetSdk = 28
-        versionCode = 6
-        versionName = "0.3.1"
+        versionCode = 7
+        versionName = "0.4.0"
     }
 
     // The release key is kept outside the repo. Set ROADAHEAD_KEYSTORE to its path and
