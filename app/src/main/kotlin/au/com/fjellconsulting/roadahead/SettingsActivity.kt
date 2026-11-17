@@ -140,6 +140,13 @@ class SettingsActivity : Activity() {
                 "Map reading: Mapsforge (LGPL-3.0).",
             14f, GREY))
 
+        // Riders see this screen, not the README, so the credit and the tip link live here too.
+        page.addView(heading("Who made it"))
+        page.addView(text(
+            "Road Ahead is free, made by Glen Sinnott. If it earns a place on your ride page, you can leave a tip at ko-fi.com/glen840924.\n" +
+                "Source: github.com/gsq480/karoo-roadahead",
+            14f, GREY))
+
         setContentView(ScrollView(this).apply {
             setBackgroundColor(Color.BLACK)
             addView(page)

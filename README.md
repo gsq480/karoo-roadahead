@@ -7,7 +7,7 @@ account.
 
 ![The Road ahead field at four sizes, and what it shows before you move or with no elevation file](docs/field.png)
 
-This is version 0.3.0, a beta. It has been ridden on a Karoo 3 and tested against recorded
+This is version 0.3.1, a beta. It has been ridden on a Karoo 3 and tested against recorded
 rides. It has not been tested on a Karoo 2. If it gets a road wrong, open an issue and say where.
 
 The page for riders, with pictures and a straight install button: https://karoo-roadahead.pages.dev
@@ -207,7 +207,8 @@ All of it lives in `fixtures/`, which git ignores.
 
 ## Credits and licence
 
-Road Ahead is released under the Apache License 2.0. See `LICENSE`.
+Road Ahead was created by Glen Sinnott and is released under the Apache License 2.0. See
+`LICENSE`. If you share a copy or a changed version, keep the `NOTICE` file with it.
 
 Road data is from OpenStreetMap contributors (ODbL). Elevation data is from Terrain Tiles on AWS
 Open Data. Map files are read with Mapsforge (LGPL-3.0), unmodified. The Karoo SDK is
