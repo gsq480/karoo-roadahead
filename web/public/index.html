@@ -47,8 +47,11 @@
 
 <section class="replay" id="replay">
   <figure class="reveal">
-    <video data-part="replay" src="assets/ride-replay.mp4" poster="assets/ride-replay.png" width="480" height="150" muted loop playsinline preload="metadata" aria-label="The Road ahead field through a real ride, drawing the next 2 km of road as the ride climbs and descends"></video>
-    <figcaption>A real ride, replayed through the field at 40 times ride speed.</figcaption>
+    <button class="clip" data-part="replay-button" type="button" aria-label="Play the ride replay" aria-describedby="replay-caption">
+      <video data-part="replay" src="assets/ride-replay.mp4" poster="assets/ride-replay.png" width="480" height="150" muted loop playsinline preload="metadata"></video>
+      <span class="play" aria-hidden="true"></span>
+    </button>
+    <figcaption id="replay-caption">A real ride, replayed through the field at 40 times ride speed.</figcaption>
   </figure>
 </section>
 
