@@ -96,7 +96,10 @@ class Tracker(
 
         val current = path
         val held = hold(p, heading)
-        val short = current != null && current.end == End.FAR_ENOUGH && current.lengthM - posM < wantM
+        // A lap of a circuit runs on too, once you're on the circuit: without this its end crept
+        // towards you with no label.
+        val short = current != null && current.lengthM - posM < wantM &&
+            (current.end == End.FAR_ENOUGH || (current.end == End.LOOP && posM > current.loopFromM))
         // Stopped at the lights or the cafe, GPS wanders. Nothing new is worked out until you move.
         val moved = predictedAt?.let { Geo.metres(it, p) >= COURSE_M } ?: true
         if ((!held || short) && (moved || current == null)) {

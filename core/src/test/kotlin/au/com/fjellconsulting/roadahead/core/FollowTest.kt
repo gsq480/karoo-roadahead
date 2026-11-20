@@ -300,6 +300,55 @@ class FollowTest {
         assertEquals(800.0, path.lengthM, 2.0)
     }
 
+    @Test fun finishesTheLapOfACircuitJoinedPartWayRound() {
+        // A 1,000 m by 200 m circuit in two pieces. Main meets the bottom side 100 m from its
+        // west corner, and the lap comes back onto the bottom side at that corner.
+        val sw = Geo.offset(x, 270.0, 100.0)
+        val se = Geo.offset(sw, 90.0, 1000.0)
+        val ne = Geo.offset(se, 0.0, 200.0)
+        val nw = Geo.offset(sw, 0.0, 200.0)
+        val bottom = Road(listOf(sw, x) + line(x, 90.0, 900.0).drop(1) + ne, name = "Circuit")
+        val top = Road(line(ne, 270.0, 1000.0) + sw, name = "Circuit")
+        val path = follow(main, bottom, top)
+        assertEquals(End.LOOP, path.end)
+        assertEquals(300.0 + 2400.0, path.lengthM, 2.0)
+        assertEndsNear(path, x)
+        assertEquals(300.0, path.loopFromM, 1.0)
+    }
+
+    // Where the Karoo's map leaves out a service road.
+
+    /** At x a 25 m stub carries straight on and stops. Side leaves in a sharp right, 115 degrees round. */
+    private val stub = Road(line(x, 90.0, 25.0), kind = "unclassified")
+    private val sharpSide = Road(line(x, 205.0, 500.0), name = "Side")
+
+    @Test fun goesBackFromAShortStubAndTakesTheSharpTurnOnAGuess() {
+        val path = through(main, stub, sharpSide)
+        assertEquals(800.0, path.lengthM, 1.0)
+        assertEquals(1, path.guessesM.size)
+        assertEquals(300.0, path.guessesM[0], 1.0)
+        assertEndsNear(path, Geo.offset(x, 205.0, 500.0))
+    }
+
+    @Test fun toldToStopItStopsAtTheJunctionBeforeAShortStub() {
+        val path = follow(main, stub, sharpSide)
+        assertEquals(End.TURN, path.end)
+        assertEquals(300.0, path.lengthM, 1.0)
+    }
+
+    @Test fun aStubLongerThanTheGapIsADeadEnd() {
+        val path = through(main, Road(line(x, 90.0, 60.0), kind = "unclassified"), sharpSide)
+        assertEquals(End.ROAD_ENDS, path.end)
+        assertEquals(360.0, path.lengthM, 1.0)
+    }
+
+    @Test fun neverGoesBackFromAStubOntoTheFarSideOfTheSameRoad() {
+        val farSide = Road(line(x, 215.0, 500.0), name = "Main", oneway = true)
+        val path = through(main, stub, farSide)
+        assertEquals(End.ROAD_ENDS, path.end)
+        assertEquals(325.0, path.lengthM, 1.0)
+    }
+
     // The snap rule.
 
     private val snap = RoadSnap()

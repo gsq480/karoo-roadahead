@@ -7,7 +7,7 @@ account.
 
 ![The Road ahead field at four sizes, and what it shows before you move or with no elevation file](docs/field.png)
 
-This is version 0.4.0, a beta. It has been ridden on a Karoo 3 and tested against recorded
+This is version 0.4.1, a beta. It has been ridden on a Karoo 3 and tested against recorded
 rides. It has not been tested on a Karoo 2. If it gets a road wrong, open an issue and say where.
 
 The page for riders, with pictures and a straight install button: https://karoo-roadahead.pages.dev
@@ -28,6 +28,10 @@ Road Ahead is free. If it's useful to you, you can [leave a tip](https://ko-fi.c
   the profile is dimmer, with a tick on the line where the guessing starts. It goes round a
   roundabout and out the likeliest exit. Turn off the road shown and it redraws within a couple
   of seconds.
+- The Karoo's map has no service roads, so a slip lane, or a stretch of road mapped as one, is
+  missing. Where the road it picks at a junction stops within 35 m, it goes back and takes
+  another road from that junction, as a guess.
+- On a circuit street it shows the whole lap, however far round you are.
 - The graph fills the tile, so small rises are easy to see. A flat road still runs through the
   middle, a climb starts low and a descent starts high.
 - On a half-width tile it is the graph alone, unless you ask for words on every tile.
@@ -90,15 +94,18 @@ Units follow the Karoo's rider profile.
   sure.
 - Set to stop at junctions, in suburbs the profile is often shorter than the distance you asked
   for.
+- A road that carries on only as a service road, into a car park or a driveway, still ends
+  where the Karoo's map ends it.
 - The elevation grid is 30 m. Off-road, under heavy tree cover and in cuttings, expect the
   shape to be right and the pitch numbers to be soft.
 - It doesn't detect climbs or send alerts. The Karoo's Climber does both with no route.
 
 Against nine recorded rides (454 km), the predicted heights sat a median 1.5 to 3.0 m from the
-altitude the ride recorded. Carrying on through junctions, the field showed the full 2 km 86% of
+altitude the ride recorded. Carrying on through junctions, the field showed the full 2 km 88% of
 the time on average, against 45% when it stops at them. The full 2 km was shown and was the road
 then ridden 29% of the time, against 24%. The price is that less of what is shown turns out
-right: 58% of the picture on average, against 74%.
+right: 58% of the picture on average, against 74%. On the Karoo's own map, which has no service
+roads, it showed the full 2 km 89% of the time.
 
 ## How it works
 
@@ -110,7 +117,9 @@ right: 58% of the picture on average, against 74%.
    junction. There it guesses (the same name, otherwise the smallest turn, or the leftmost or
    rightmost way on if the rider picked that) and notes where, or stops if the rider set it to.
    A roundabout takes the exit with your road's name, otherwise the one that best carries on the
-   way you came in, and never the road you came in on.
+   way you came in, and never the road you came in on. Where the road it took at a junction
+   stops on the map within 35 m, it goes back to the junction and guesses another road there,
+   even a sharp turn. A circuit is drawn one full lap.
 3. **Read the heights** (`core/.../Heights.kt`, `Profile.kt`). It samples a 30 m elevation grid
    every 25 m along that road, smooths it, and draws a straight line across bridges and tunnels.
 4. **Keep it going** (`core/.../Tracker.kt`). The prediction holds while you stay on it, and a new

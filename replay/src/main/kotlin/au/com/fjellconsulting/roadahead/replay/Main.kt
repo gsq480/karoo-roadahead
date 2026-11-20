@@ -152,11 +152,15 @@ fun main(args: Array<String>) {
             fixedSeen.keys.removeIf { it < nearest }
             riderSeen.keys.removeIf { it < nearest }
             var key = nearest
+            val changesBefore = fixedChanges
             while (key * 10.0 + 5.0 < here + ahead.lengthM) {
                 val d = key * 10.0 + 5.0 - here
                 band(ahead.colourBlocks, d).let { c -> fixedSeen.put(key, c)?.let { if (it != c) fixedChanges++ } }
                 band(riderBlocks, d).let { c -> riderSeen.put(key, c)?.let { if (it != c) riderChanges++ } }
                 key++
+            }
+            if (trace && fixedChanges > changesBefore) {
+                println("  fix %4d at %.0f m: %d stretches of 10 m changed colour".format(i, ride[i].cumM, fixedChanges - changesBefore))
             }
         }
         if (dumpAt == i) {

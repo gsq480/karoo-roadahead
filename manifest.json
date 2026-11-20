@@ -2,11 +2,11 @@
   "label": "Road Ahead",
   "packageName": "au.com.fjellconsulting.roadahead",
   "latestApkUrl": "https://github.com/gsq480/karoo-roadahead/releases/latest/download/roadahead.apk",
-  "latestVersion": "0.4.0",
-  "latestVersionCode": 7,
+  "latestVersion": "0.4.1",
+  "latestVersionCode": 8,
   "developer": "Glen Sinnott",
   "description": "One ride field: the elevation profile of the road in front of you, with no route loaded. It guesses the road ahead from the one you're on, reads the roads from the Karoo's own offline map, and fetches elevation over Wi-Fi. Tap the field to step between 2, 5 and 10 km.",
-  "releaseNotes": "Colours stay put: each block is fixed to the road and keeps its colour as you ride through it. Roundabouts no longer stop the picture. At a junction you can now pick left first or right first, as well as the likeliest road or stopping there.",
+  "releaseNotes": "Fewer false dead ends. The Karoo's map has no service roads, so a slip lane can make a road look like it ends. Where the road picked at a junction stops within 35 m, the picture now goes back and takes another road from that junction, as a guess. On a circuit street it shows the whole lap.",
   "screenshotUrls": [
     "https://github.com/gsq480/karoo-roadahead/releases/latest/download/field.png"
   ],

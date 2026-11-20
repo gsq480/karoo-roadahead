@@ -353,6 +353,38 @@ class ProfileTest {
         assertTrue(blocks.all { kotlin.math.abs(it.gradePct) < 0.05 })
     }
 
+    private fun along(from: Pt, bearing: Double, m: Double) = (0..(m / 50.0).toInt()).map { Geo.offset(from, bearing, it * 50.0) }
+
+    @Test fun showsTheWholeDistanceAllTheWayRoundACircuit() {
+        // A 1,000 m by 200 m circuit in two pieces, ridden east along its bottom side from `o`.
+        val se = east(1000.0)
+        val ne = Geo.offset(se, 0.0, 200.0)
+        val nw = Geo.offset(o, 0.0, 200.0)
+        val t = Tracker(RoadList(listOf(
+            Road(along(o, 90.0, 1000.0) + along(se, 0.0, 200.0).drop(1), name = "Circuit"),
+            Road(along(ne, 270.0, 1000.0) + along(nw, 180.0, 200.0).drop(1), name = "Circuit"),
+        )), slope)
+        val shown = ArrayList<Double>()
+        for (m in 0..1000 step 10) (t.update(east(m.toDouble()), null, 2000.0) as? Look.Road)?.let { shown += it.ahead.lengthM }
+        // A lap is 2,400 m, so 2,000 m of it is always there to show.
+        assertTrue(shown.size > 90)
+        assertTrue("shortest ${shown.min()}", shown.all { it >= 1999.0 })
+    }
+
+    @Test fun doesNotPlanAgainBeforeReachingTheCircuitItEndsOn() {
+        // Main runs 1,000 m east into a 400 m ring in two pieces, so the lap ends 1,400 m on.
+        val end = east(1000.0)
+        val e = Geo.offset(end, 90.0, 100.0)
+        val ne = Geo.offset(e, 0.0, 100.0)
+        val n = Geo.offset(end, 0.0, 100.0)
+        val ring = listOf(Road(listOf(end, e, ne), name = "Ring"), Road(listOf(ne, n, end), name = "Ring"))
+        val t = Tracker(RoadList(listOf(road(0.0, 1000.0)) + ring), slope)
+        var look: Look = Look.Waiting
+        for (m in 0..900 step 10) look = t.update(east(m.toDouble()), null, 2000.0)
+        assertEquals(1, t.predictions)
+        assertEquals(End.LOOP, (look as Look.Road).ahead.end)
+    }
+
     @Test fun saysSoWhenThereIsNoRoad() {
         val t = Tracker(RoadList(emptyList()), slope)
         t.update(east(0.0), null, 2000.0)

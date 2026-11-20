@@ -45,6 +45,12 @@ class Path(
      * Up to the first of these the road is known; past it, it is the likeliest way on.
      */
     val guessesM: List<Double> = emptyList(),
+    /**
+     * Where the circuit that a [End.LOOP] path goes round begins, as a distance along it. Past it
+     * you're riding the circuit itself, and a new prediction from where you are shows more of it.
+     * Short of it, a new prediction would only end in the same place.
+     */
+    val loopFromM: Double = 0.0,
 ) {
     val lengthM: Double get() = points.last().distM
 
@@ -77,7 +83,8 @@ class Path(
  *
  * Unless told to [AtJunction.STOP], it doesn't stop at a T-junction or a fork. It takes the way on
  * the rider picked (the likeliest, or the leftmost or rightmost) and notes where it guessed, so
- * the picture always reaches the distance asked for.
+ * the picture always reaches the distance asked for. Where the way it took stops on the map just
+ * past the junction, it goes back and guesses another way on there.
  */
 class RoadFollow(private val source: RoadSource, private val rules: Rules = Rules()) {
 
@@ -95,47 +102,104 @@ class RoadFollow(private val source: RoadSource, private val rules: Rules = Rule
      */
     private class Joins(val options: List<Option>, val arms: List<Arm>)
 
+    /**
+     * A junction passed with other ways on left untaken: how long the path was there, and what
+     * it needs to take one of the others instead.
+     */
+    private class Fork(val outSize: Int, val distM: Double, val guessCount: Int, val from: Road, val arriving: Double, val others: Joins)
+
     fun follow(start: Spot, maxM: Double, at: AtJunction = AtJunction.STOP): Path {
         val out = ArrayList<PathPoint>()
         val guesses = ArrayList<Double>()
-        fun done(end: End) = Path(out, end, name(start), start.road.kind, guesses)
+        var loopFrom = 0.0
+        fun done(end: End) = Path(out, end, name(start), start.road.kind, guesses, loopFrom)
         out += PathPoint(start.at, 0.0, false)
-        val seen = HashSet<Long>()
+        // Each piece ridden so far, by piece and direction: where the prediction joined it, and
+        // how far along the path that was.
+        val joined = HashMap<Long, Pair<Spot, Double>>()
         var spot = start
         var dist = 0.0
+        // The last junction passed where another way on was left untaken.
+        var fork: Fork? = null
 
-        while (true) {
-            if (!seen.add(spot.road.key * 2 + (if (spot.forward) 1 else 0)) || seen.size > rules.maxPieces) {
-                return done(End.LOOP)
-            }
-            // Ride this piece to its end.
-            val flat = spot.road.bridge || spot.road.tunnel
+        // Adds points to the path. True once it reaches the distance asked for.
+        fun ride(pts: List<Pt>, flat: Boolean): Boolean {
             var prev = out.last().pt
-            for (pt in spot.ahead()) {
+            for (pt in pts) {
                 val d = Geo.metres(prev, pt)
                 if (d < 0.01) continue
                 if (dist + d >= maxM) {
                     out += PathPoint(Geo.between(prev, pt, (maxM - dist) / d), maxM, flat)
-                    return done(End.FAR_ENOUGH)
+                    return true
                 }
                 dist += d
                 out += PathPoint(pt, dist, flat)
                 prev = pt
             }
+            return false
+        }
 
-            val arriving = arrivalBearing(out) ?: spot.bearing(rules.bearingLookM) ?: return done(End.ROAD_ENDS)
-            val met = joins(prev, spot.road, arriving) ?: return done(End.NO_MAP)
-            var next = choose(spot.road, met)
-                ?: (if (at != AtJunction.STOP) guess(spot.road, met, at)?.also { guesses += dist } else null)
-                ?: return done(when {
-                    met.options.any { it.turn <= rules.maxTurn } -> End.TURN
-                    // A circuit mapped as one closed piece: a lap is as far as it goes.
-                    Geo.metres(spot.road.pts.first(), spot.road.pts.last()) < 0.5 -> End.LOOP
-                    else -> End.ROAD_ENDS
-                })
+        while (true) {
+            val flat = spot.road.bridge || spot.road.tunnel
+            val key = spot.road.key * 2 + (if (spot.forward) 1 else 0)
+            val first = joined[key]
+            if (first != null || joined.size >= rules.maxPieces) {
+                // Back on a piece already ridden: the road comes round in a circuit. Finish the lap
+                // to where the prediction first joined this piece, so the picture holds the whole
+                // circuit once and not just up to the start of a piece.
+                loopFrom = first?.second ?: dist
+                val lap = first?.let { lapTo(spot, it.first) }
+                if (lap != null && ride(lap, flat)) return done(End.FAR_ENOUGH)
+                return done(End.LOOP)
+            }
+            joined[key] = Pair(spot, dist)
+            // Ride this piece to its end.
+            if (ride(spot.ahead(), flat)) return done(End.FAR_ENOUGH)
+            val prev = out.last().pt
+
+            var from = spot.road
+            var arriving = arrivalBearing(out) ?: spot.bearing(rules.bearingLookM) ?: return done(End.ROAD_ENDS)
+            val met = joins(prev, from, arriving) ?: return done(End.NO_MAP)
+            val guessesBefore = guesses.size
+            var next = choose(from, met)
+                ?: (if (at != AtJunction.STOP) guess(from, met, at)?.also { guesses += dist } else null)
+            if (next != null) {
+                val taken = next.road.key
+                val others = met.options.filter {
+                    it.road.key != taken && (it.turn <= rules.maxTurn || (it.turn <= rules.sharpTurn && !from.sameRoadAs(it.road)))
+                }
+                if (others.isNotEmpty()) fork = Fork(out.size, dist, guessesBefore, from, arriving, Joins(others, emptyList()))
+            } else {
+                if (met.options.any { it.turn <= rules.maxTurn }) return done(End.TURN)
+                // A circuit mapped as one closed piece: a lap is as far as it goes.
+                if (Geo.metres(from.pts.first(), from.pts.last()) < 0.5) {
+                    loopFrom = joined.getValue(key).second
+                    return done(End.LOOP)
+                }
+                // The Karoo's map leaves out service roads, so a road can stop on the map where it
+                // really carries on. That gets guessed past; anything else is a dead end.
+                val back = fork?.takeIf { dist - it.distM <= rules.gapM }
+                if (back != null) {
+                    // The way taken at the last junction stops within a short gap of it, where it
+                    // carries on as a service road. Go back and take another way on there, even a
+                    // sharp turn onto another road: Eucumbene Drive bends 111 degrees into
+                    // Hindmarsh Drive, and the only way on under the usual limit is a stub.
+                    fork = null
+                    while (out.size > back.outSize) out.removeAt(out.lastIndex)
+                    while (guesses.size > back.guessCount) guesses.removeAt(guesses.lastIndex)
+                    dist = back.distM
+                    if (at == AtJunction.STOP) return done(End.TURN)
+                    from = back.from
+                    arriving = back.arriving
+                    next = guess(from, back.others, at, rules.sharpTurn) ?: return done(End.ROAD_ENDS)
+                    guesses += dist
+                } else {
+                    return done(End.ROAD_ENDS)
+                }
+            }
 
             if (next.road.roundabout) {
-                val ring = roundabout(next.spot, spot.road, arriving) ?: return done(End.TURN)
+                val ring = roundabout(next.spot, from, arriving) ?: return done(End.TURN)
                 for (pt in ring.first) {
                     val d = Geo.metres(out.last().pt, pt)
                     if (d < 0.01) continue
@@ -152,13 +216,24 @@ class RoadFollow(private val source: RoadSource, private val rules: Rules = Rule
     private fun name(start: Spot): String? = start.road.label
 
     /**
+     * The points from [back], where the prediction comes back onto a piece, to [first], where it
+     * first joined that piece going the same way. Null when it comes back on past that place,
+     * so there is no stretch of the lap left to add.
+     */
+    private fun lapTo(back: Spot, first: Spot): List<Pt>? {
+        val segs = if (first.forward) first.seg - back.seg else back.seg - first.seg
+        val behind = segs > 0 || (segs == 0 && (if (first.forward) back.t <= first.t else back.t >= first.t))
+        return if (behind) back.ahead().take(segs) + first.at else null
+    }
+
+    /**
      * No rule settles it: a T-junction or a fork. Whichever way the rider picked, a road wins over
      * a driveway or path when you're on a road. The likeliest way on is the piece with the same
      * name, otherwise the smallest turn. Left first takes the leftmost way on, so a left turn when
      * there is one, then straight on, then right; right first is the mirror of it.
      */
-    private fun guess(current: Road, met: Joins, at: AtJunction): Option? {
-        val onward = met.options.filter { it.turn <= rules.maxTurn }
+    private fun guess(current: Road, met: Joins, at: AtJunction, maxTurn: Double = rules.maxTurn): Option? {
+        val onward = met.options.filter { it.turn <= maxTurn }
         val pool = if (current.roadClass == RoadClass.ROAD) onward.filter { it.road.roadClass == RoadClass.ROAD }.ifEmpty { onward } else onward
         return when (at) {
             AtJunction.LEFT_FIRST -> pool.minByOrNull { it.side }

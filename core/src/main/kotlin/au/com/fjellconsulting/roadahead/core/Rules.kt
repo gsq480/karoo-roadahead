@@ -21,6 +21,18 @@ data class Rules(
     val holdMaxAngle: Double = 60.0,
     /** Two pieces join when one ends within this of the other. */
     val joinM: Double = 2.5,
+    /**
+     * Where the way taken at a junction stops on the map no further on than this, the picture
+     * goes back and takes another road there, as a guess. The Karoo's map leaves out service
+     * roads, so a stub that carries on as one seems to end (29 m at Eucumbene Drive's end).
+     */
+    val gapM: Double = 35.0,
+    /**
+     * ...turning up to this sharply. Never onto the same road going back, such as the far side of
+     * a divided road (125 degrees at Eucumbene Drive's end, where the turn into Hindmarsh Drive is
+     * 111).
+     */
+    val sharpTurn: Double = 150.0,
     /** "Straight on" at the end of a piece means a turn no bigger than this. */
     val straightAngle: Double = 30.0,
     /** Anything sharper than this is going back the way you came, never a way onward. */
