@@ -278,6 +278,73 @@ class FollowTest {
         assertTrue(!MapRoads.looksLikeARoundabout((0..12).map { Geo.offset(centre, it * 30.0, 200.0) }))
     }
 
+    /**
+     * The roundabout drawn in pieces, clockwise, split where roads meet it, with no roundabout
+     * tag. Points every 15 degrees, 20 m out. The south road meets it by a pair of one-way slip
+     * lanes, out from the 165 degree point and back in at the 195 degree point, joining 6 m out
+     * from the ring: close enough that the ring with that detour out and back is still round.
+     */
+    private fun piecesRoundabout(reversed: Set<Int> = emptySet()): List<Road> {
+        val centre = Geo.offset(x, 90.0, 20.0)
+        fun arc(from: Double, to: Double): List<Pt> {
+            val pts = ArrayList<Pt>()
+            var b = from
+            while (b < to - 0.1) {
+                pts += Geo.offset(centre, b % 360.0, 20.0)
+                b += 15.0
+            }
+            pts += Geo.offset(centre, to % 360.0, 20.0)
+            return pts
+        }
+        val arcs = listOf(arc(270.0, 360.0), arc(360.0, 450.0), arc(450.0, 525.0), arc(525.0, 555.0), arc(555.0, 630.0))
+        val pieces = arcs.mapIndexed { i, pts -> Road(if (i in reversed) pts.reversed() else pts) }
+        val slip = Geo.offset(centre, 180.0, 26.0)
+        fun exit(bearing: Double, name: String) = Road(line(Geo.offset(centre, bearing, 20.0), bearing, 300.0), name = name)
+        return listOf(main) + pieces + listOf(
+            exit(0.0, "North"), exit(90.0, "Main"),
+            Road(listOf(Geo.offset(centre, 165.0, 20.0), slip), oneway = true),
+            Road(listOf(slip, Geo.offset(centre, 195.0, 20.0)), oneway = true),
+            Road(line(slip, 180.0, 300.0), name = "South"),
+        )
+    }
+
+    @Test fun joinsARoundaboutDrawnInPiecesAndGoesRoundIt() {
+        val roads = MapRoads.joinRings(piecesRoundabout())
+        // The five pieces of the ring, and nothing else: not the slip lanes out and back.
+        assertEquals(listOf(1, 2, 3, 4, 5), roads.indices.filter { roads[it].roundabout })
+        // Round to the exit with your road's name. Unjoined, the first piece ends in a junction.
+        val path = follow(*roads.toTypedArray())
+        assertEndsNear(path, Geo.offset(x, 90.0, 340.0))
+        assertEquals(End.ROAD_ENDS, path.end)
+        assertEquals(End.TURN, follow(*piecesRoundabout().toTypedArray()).end)
+    }
+
+    @Test fun yourRoadsNameDoesNotTakeYouBackOutTheWayYouCame() {
+        // Main meets the ring by one-way slip lanes: in to the west point, out from the 210 degree
+        // point back to where they split, 40 m out. The lane out is called Main too, and turns
+        // about 139 degrees from the lane in, as at Dunshaughlin (142). The picture goes round to
+        // the exit that carries on, east, not round and back out along Main.
+        val centre = Geo.offset(x, 90.0, 20.0)
+        val split = Geo.offset(centre, 258.0, 40.0)
+        val approach = Road(line(o, Geo.bearing(o, split), Geo.metres(o, split)), name = "Main")
+        val laneIn = Road(listOf(split, Geo.offset(centre, 270.0, 20.0)), name = "Main", oneway = true)
+        val laneOut = Road(listOf(Geo.offset(centre, 210.0, 20.0), split), name = "Main", oneway = true)
+        assertTrue(Geo.turn(Geo.bearing(split, laneIn.pts[1]), Geo.bearing(laneOut.pts[0], split)) in 130.0..145.0)
+        val ring = Road((0..24).map { Geo.offset(centre, (270.0 + it * 15.0) % 360.0, 20.0) }, roundabout = true)
+        fun exit(bearing: Double, name: String) = Road(line(Geo.offset(centre, bearing, 20.0), bearing, 300.0), name = name)
+        val path = follow(approach, laneIn, laneOut, ring, exit(0.0, "North"), exit(90.0, "East"), exit(180.0, "South"))
+        assertEndsNear(path, Geo.offset(centre, 90.0, 320.0))
+    }
+
+    @Test fun doesNotMistakeALoopOfStreetsForARoundabout() {
+        // The same pieces drawn some one way and some the other: a loop of streets, not a ring.
+        assertTrue(MapRoads.joinRings(piecesRoundabout(reversed = setOf(2, 4))).none { it.roundabout })
+        // A loop of four streets 200 m out is too big to be a roundabout.
+        val centre = Geo.offset(o, 0.0, 400.0)
+        val big = (0 until 4).map { q -> Road((0..6).map { Geo.offset(centre, (q * 90.0 + it * 15.0) % 360.0, 200.0) }) }
+        assertTrue(MapRoads.joinRings(big).none { it.roundabout })
+    }
+
     @Test fun readsARoadFromAMapsTags() {
         fun tags(vararg kv: Pair<String, String>) = kv.map { org.mapsforge.core.model.Tag(it.first, it.second) }
         val pts = line(o, 90.0, 300.0)

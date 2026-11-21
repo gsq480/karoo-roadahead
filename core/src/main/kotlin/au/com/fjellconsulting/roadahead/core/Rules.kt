@@ -33,6 +33,11 @@ data class Rules(
      * 111).
      */
     val sharpTurn: Double = 150.0,
+    /**
+     * A roundabout exit turning more than this from the way you came in takes you back, so your
+     * road's name doesn't win it (142 degrees at Drumree Road's slip lane out, Dunshaughlin).
+     */
+    val backTurn: Double = 120.0,
     /** "Straight on" at the end of a piece means a turn no bigger than this. */
     val straightAngle: Double = 30.0,
     /** Anything sharper than this is going back the way you came, never a way onward. */

@@ -71,8 +71,9 @@ class MapRoads(files: List<File>, private val zoom: Int = 14, private val keep: 
             // Where two files overlap at a border, the first that has the tile is enough.
             if (roads.isNotEmpty()) break
         }
-        cache[id] = roads
-        return roads
+        val joined = joinRings(roads)
+        cache[id] = joined
+        return joined
     }
 
     @Synchronized
@@ -129,5 +130,80 @@ class MapRoads(files: List<File>, private val zoom: Int = 14, private val keep: 
             val mean = radii.average()
             return radii.all { it > mean * 0.65 && it < mean * 1.35 }
         }
+
+        /**
+         * Marks the pieces of roundabouts drawn in several pieces. Many roundabouts are mapped as
+         * one piece between each pair of roads that meet them (both at M3 Junction 6 in Ireland
+         * since 2026-08-18), so no single piece is a closed circle and, with the roundabout tag
+         * dropped, nothing marks them. Pieces that join end to end, each drawn on from where the
+         * last one stops with no sharp turn between them, and that close into a small circle,
+         * are a roundabout. A slip lane out and back in again turns sharply where the two meet,
+         * so it never counts as part of the ring.
+         */
+        fun joinRings(roads: List<Road>): List<Road> {
+            fun spot(p: Pt) = Math.round(p.lat * 1e6) * 1_000_000_000L + Math.round(p.lng * 1e6)
+            fun lengthOf(r: Road): Double {
+                var m = 0.0
+                for (i in 1 until r.pts.size) m += Geo.metres(r.pts[i - 1], r.pts[i])
+                return m
+            }
+            val lengths = roads.map { lengthOf(it) }
+            val candidate = roads.indices.filter { i ->
+                val r = roads[i]
+                !r.roundabout && r.kind !in PATHS && lengths[i] <= RING_MAX_M &&
+                    Geo.metres(r.pts.first(), r.pts.last()) > 1.0
+            }
+            if (candidate.size < 2) return roads
+            val startingAt = HashMap<Long, MutableList<Int>>()
+            for (i in candidate) startingAt.getOrPut(spot(roads[i].pts.first())) { ArrayList() } += i
+
+            val ring = HashSet<Int>()
+            for (first in candidate) {
+                if (first in ring) continue
+                val home = spot(roads[first].pts.first())
+                var found: List<Int>? = null
+                // Each chain of pieces on from this one, up to a small circle's length, until one closes.
+                fun extend(chain: MutableList<Int>, m: Double) {
+                    if (found != null || chain.size > RING_MAX_PIECES) return
+                    val last = roads[chain.last()]
+                    val n = last.pts.size
+                    val leaving = Geo.bearing(last.pts[n - 2], last.pts[n - 1])
+                    for (next in startingAt[spot(last.pts.last())].orEmpty()) {
+                        val r = roads[next]
+                        if (next in chain || m + lengths[next] > RING_MAX_M) continue
+                        if (Geo.turn(leaving, Geo.bearing(r.pts[0], r.pts[1])) > RING_JOIN_TURN) continue
+                        chain += next
+                        if (spot(r.pts.last()) == home) {
+                            // The join that closes the circle has to be as smooth as the rest.
+                            val m2 = r.pts.size
+                            val start = roads[first].pts
+                            if (Geo.turn(Geo.bearing(r.pts[m2 - 2], r.pts[m2 - 1]), Geo.bearing(start[0], start[1])) > RING_JOIN_TURN) {
+                                chain.removeAt(chain.lastIndex)
+                                continue
+                            }
+                            val pts = ArrayList<Pt>()
+                            for (i in chain) pts += if (pts.isEmpty()) roads[i].pts else roads[i].pts.drop(1)
+                            if (looksLikeARoundabout(pts)) found = chain.toList()
+                        } else {
+                            extend(chain, m + lengths[next])
+                        }
+                        if (found != null) return
+                        chain.removeAt(chain.lastIndex)
+                    }
+                }
+                extend(mutableListOf(first), lengths[first])
+                found?.let { ring += it }
+            }
+            if (ring.isEmpty()) return roads
+            return roads.mapIndexed { i, r ->
+                if (i in ring) Road(r.pts, r.name, r.ref, r.kind, r.oneway, roundabout = true, bridge = r.bridge, tunnel = r.tunnel) else r
+            }
+        }
+
+        /** The most a roundabout's pieces add up to, as for one drawn whole. */
+        private const val RING_MAX_M = 400.0
+        private const val RING_MAX_PIECES = 10
+        /** The sharpest turn from one piece of a ring onto the next, in degrees. */
+        private const val RING_JOIN_TURN = 60.0
     }
 }

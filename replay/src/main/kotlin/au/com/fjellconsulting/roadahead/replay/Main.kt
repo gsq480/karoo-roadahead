@@ -44,7 +44,8 @@ fun main(args: Array<String>) {
     val source = if (args[0].endsWith(".map")) au.com.fjellconsulting.roadahead.core.MapRoads(listOf(File(args[0]))) else {
         var roads = readRoads(File(args[0]))
         if (cut) roads = cutIntoTiles(roads)
-        GridRoads(roads)
+        // As the app does with each map tile: a roundabout drawn in pieces is joined up.
+        GridRoads(au.com.fjellconsulting.roadahead.core.MapRoads.joinRings(roads))
     }
     // The app carries on through junctions on a guess. `--junction left` (or right, likeliest or
     // stop) picks how, as the app's picker does; `--stop` is the same as `--junction stop`.

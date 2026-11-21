@@ -32,6 +32,9 @@ Road Ahead is free. If it's useful to you, you can [leave a tip](https://ko-fi.c
   missing. Where the road it picks at a junction stops within 35 m, it goes back and takes
   another road from that junction, as a guess.
 - On a circuit street it shows the whole lap, however far round you are.
+- The Karoo's map doesn't say which roads are roundabouts, so it knows one by its shape: a small
+  circle. A roundabout mapped in several pieces, one between each pair of roads that meet it,
+  counts too.
 - The graph fills the tile, so small rises are easy to see. A flat road still runs through the
   middle, a climb starts low and a descent starts high.
 - On a half-width tile it is the graph alone, unless you ask for words on every tile.

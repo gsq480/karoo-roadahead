@@ -375,7 +375,10 @@ class RoadFollow(private val source: RoadSource, private val rules: Rules = Rule
         val pool = if (from.roadClass == RoadClass.ROAD) {
             exits.filter { it.option.road.roadClass == RoadClass.ROAD }.ifEmpty { exits }
         } else exits
-        val chosen = pool.filter { from.sameRoadAs(it.option.road) }.minByOrNull { it.option.turn }
+        // Your road's name doesn't win an exit that takes you back the way you came: where a road
+        // meets the ring by a pair of one-way slip lanes, the lane out has the same name as the
+        // lane in, and the R125's roundabout at Dunshaughlin sent the picture round and back out.
+        val chosen = pool.filter { from.sameRoadAs(it.option.road) && it.option.turn <= rules.backTurn }.minByOrNull { it.option.turn }
             ?: pool.minByOrNull { it.option.turn }
             ?: return null
         return Pair(ring.subList(1, chosen.index + 1), chosen.option)
